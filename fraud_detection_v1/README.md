@@ -9,9 +9,9 @@ This roadmap outlines the development plan for the initial version of the applic
 - [✔️] Configure basic Docker networking and volumes for database persistence
 
 ### Phase 2: Database & Models (Day 4-7)
-- [] Design and implement the `Transaction` table schema using SQLAlchemy ORM
-- [] Establish a database connection handler that reads credentials from environment variables
-- [] Implement logic to create initial database tables on startup
+- [✔️] Design and implement the `Transaction` table schema using SQLAlchemy ORM
+- [✔️] Establish a database connection handler that reads credentials from environment variables
+- [✔️] Implement logic to create initial database tables on startup
 
 ### Phase 3: Basic API (Day 8-12)
 - [] Develop a `POST /transaction` endpoint to recieve new transaction data

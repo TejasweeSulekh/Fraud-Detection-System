@@ -3,9 +3,10 @@ from .database import Base
 import datetime
 
 class Transaction(Base):
+    # Tells SQLAlchemy that this class should be mapped to a SQL table names transactions
     __tablename__ = "transactions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True) # Column name id
     amount = Column(Float, index=True)
     merchant = Column(String)
     location = Column(String)
