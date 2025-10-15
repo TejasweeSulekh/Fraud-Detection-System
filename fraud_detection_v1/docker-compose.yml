@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # The PostgreSQL Database Service
+  db:
+    image: postgres:13
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - ./.env
+    ports:
+      # Optional: Expose port 5432 to connect with an external DB client
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The FastAPI Backend Service
+  backend:
+    build: ./backend
+    volumes:
+      # Mount the app code directory for live reloading during development
+      - ./backend/app:/code/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  # Define a named volume for persistent database storage
+  pgdata:
