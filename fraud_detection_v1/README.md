@@ -4,9 +4,9 @@ This roadmap outlines the development plan for the initial version of the applic
 
 ### Phase 1: Project Setup (Day 1-3)
 - [✔️] Initialize the project directory structure
-- [] Create a `Dockerfile` for the python backend service
-- [] Create a `docker-compose.yml` file to manage the backend and database services
-- [] Configure basic Docker networking and volumes for database persistence
+- [✔️] Create a `Dockerfile` for the python backend service
+- [✔️] Create a `docker-compose.yml` file to manage the backend and database services
+- [✔️] Configure basic Docker networking and volumes for database persistence
 
 ### Phase 2: Database & Models (Day 4-7)
 - [] Design and implement the `Transaction` table schema using SQLAlchemy ORM
