@@ -14,10 +14,10 @@ This roadmap outlines the development plan for the initial version of the applic
 - [✔️] Implement logic to create initial database tables on startup
 
 ### Phase 3: Basic API (Day 8-12)
-- [] Develop a `POST /transaction` endpoint to recieve new transaction data
-- [] Implement the core rule-based fraud detection logic
-- [] Develop a `GET /transaction` endpoint to retrieve all processed transactions
-- [] Add a `GET /health` endpoint for health checks
+- [✔️] Develop a `POST /transaction` endpoint to recieve new transaction data
+- [✔️] Implement the core rule-based fraud detection logic
+- [✔️] Develop a `GET /transaction` endpoint to retrieve all processed transactions
+- [✔️] Add a `GET /health` endpoint for health checks
 
 ### Phase 4: Frontend  (Days 13-16)
 - [] Create an `index.html file with a form to submit transaction details
