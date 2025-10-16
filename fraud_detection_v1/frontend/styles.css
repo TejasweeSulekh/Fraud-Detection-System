@@ -49,3 +49,31 @@ button:hover {
     background-color: #e9ecef;
     border-radius: 4px;
 }
+
+/* Styles for the transaction history table */
+#transaction-list-container {
+    margin-top: 2rem;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+}
+th, td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+th {
+    background-color: #f2f2f2;
+}
+/* Highlight fraudulent transactions in the table */
+tr.fraud {
+    background-color: #ffebee;
+    color: #c62828;
+    font-weight: bold;
+}
+.fraud-text {
+    color: #c62828;
+    font-weight: bold;
+}
