@@ -20,10 +20,10 @@ This roadmap outlines the development plan for the initial version of the applic
 - [✔️] Add a `GET /health` endpoint for health checks
 
 ### Phase 4: Frontend  (Days 13-16)
-- [] Create an `index.html file with a form to submit transaction details
-- [] Write `app.js` to handle form submission using the `fetch()` API to call the backend
-- [] Display the fraud analysis result and transaction history on the webpage
-- [] Apply basic styling with `styles.css`
+- [✔️] Create an `index.html file with a form to submit transaction details
+- [✔️] Write `app.js` to handle form submission using the `fetch()` API to call the backend
+- [✔️] Display the fraud analysis result and transaction history on the webpage
+- [✔️] Apply basic styling with `styles.css`
 
 ### Phase 5: Testing & Polishing (Days 17-21)
 - [] Write unit tests for the rule-based logic using `pytest`
