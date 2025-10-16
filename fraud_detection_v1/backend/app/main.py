@@ -4,18 +4,33 @@ from .database import engine, SessionLocal
 from . import models
 
 # Pydantic models for data validation
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import datetime
+from typing import List, Optional # Import List and Optional for response model
 
 # --- Step 1: Data Validation with Pydantic ---
-# Pydantic models define the "shape" of your data. FastAPI uses them to
-# validate incoming request data and to serialize response data.
-# This ensures that any request to our endpoint MUST contain an amount,
-# merchant, and location.
 class TransactionCreate(BaseModel):
     amount: float
     merchant: str
     location: str
+
+# --- NEW: Define the Response Model ---
+# This Pydantic model defines the data shape for a transaction being returned by the API.
+# It includes all the fields from our database model.
+# By creating a separate model for responses, we control exactly what data is sent out.
+class TransactionResponse(BaseModel):
+    id: int
+    amount: float
+    merchant: str
+    location: str
+    timestamp: datetime.datetime
+    is_fraud: bool
+    fraud_reason: Optional[str] = None # This field can be a string or None
+
+    # This configuration tells Pydantic to read the data even if it's not a dict,
+    # but an ORM model (or any other arbitrary object with attributes).
+    model_config = ConfigDict(from_attributes=True)
+
 
 # This line ensures the database tables are created on startup
 models.Base.metadata.create_all(bind=engine)
@@ -26,11 +41,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-
-# --- Step 4: Dependency for Database Session ---
-# This is a dependency function. FastAPI's dependency injection system
-# will call this function for every request that needs a database connection.
-# It ensures we get a session, use it, and then close it properly.
+# --- Dependency for Database Session ---
 def get_db():
     db = SessionLocal()
     try:
@@ -38,10 +49,7 @@ def get_db():
     finally:
         db.close()
 
-
-# --- Step 2: The Rule-Based Logic ---
-# This is our simple fraud detection engine. It's a plain Python function
-# that takes the transaction data and checks it against a list of rules.
+# --- The Rule-Based Logic ---
 def analyze_transaction(transaction: TransactionCreate):
     """Analyzes a transaction based on a set of simple rules."""
     rules = [
@@ -52,22 +60,18 @@ def analyze_transaction(transaction: TransactionCreate):
 
     for condition, reason in rules:
         if condition:
-            return True, reason  # Fraud detected
+            return True, reason
 
-    return False, "Legitimate"  # No fraud detected
+    return False, "Legitimate"
 
-
-@app.post("/transaction", tags=["Transactions"])
+@app.post("/transaction", response_model=TransactionResponse, tags=["Transactions"])
 def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
     """
     Receives transaction data, analyzes it for fraud, saves it to the database,
     and returns the analysis result.
     """
-    # --- Step 3: The Endpoint Logic ---
-    # 1. Analyze the incoming transaction data
     is_fraud, reason = analyze_transaction(transaction)
 
-    # 2. Create a SQLAlchemy model instance from the data
     db_transaction = models.Transaction(
         amount=transaction.amount,
         merchant=transaction.merchant,
@@ -76,13 +80,24 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         fraud_reason=reason
     )
 
-    # 3. Add the new transaction to the database session and commit it
     db.add(db_transaction)
     db.commit()
-    db.refresh(db_transaction) # Refresh to get the new ID and timestamp from the DB
+    db.refresh(db_transaction)
 
-    # 4. Return the saved transaction data
     return db_transaction
+
+
+# --- NEW: Create the GET Endpoint ---
+# The 'response_model=List[TransactionResponse]' tells FastAPI to expect a list of
+# items, where each item follows the structure of our TransactionResponse model.
+# FastAPI will automatically handle the data serialization.
+@app.get("/transactions", response_model=List[TransactionResponse], tags=["Transactions"])
+def get_all_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """
+    Retrieves a list of all transactions from the database.
+    """
+    transactions = db.query(models.Transaction).offset(skip).limit(limit).all()
+    return transactions
 
 
 @app.get("/health", tags=["Health Check"])
