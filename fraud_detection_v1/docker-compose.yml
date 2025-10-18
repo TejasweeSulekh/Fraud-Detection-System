@@ -23,6 +23,8 @@ services:
     volumes:
       # Mount the app code directory for live reloading during development
       - ./backend/app:/code/app
+      # Mount the test directory
+      - ./backend/tests:code/tests
     ports:
       - "8000:8000"
     env_file:
