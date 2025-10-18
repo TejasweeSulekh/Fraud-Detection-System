@@ -29,7 +29,7 @@ services:
       - "8000:8000"
     env_file:
       - ./.env
-    # The environment to import modules from
+    # The environment to import modules
     environment:
       - PYTHONPATH=/code
     depends_on:
