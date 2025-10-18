@@ -26,7 +26,7 @@ This roadmap outlines the development plan for the initial version of the applic
 - [✔️] Apply basic styling with `styles.css`
 
 ### Phase 5: Testing & Polishing (Days 17-21)
-- [] Write unit tests for the rule-based logic using `pytest`
-- [] Write basic integration tests for the API endpoints
-- [] Add comments to the code for clarity
-- [] Finalize and update this README with complete setup and usage instructions
+- [✔️] Write unit tests for the rule-based logic using `pytest`
+- [✔️] Write basic integration tests for the API endpoints
+- [✔️] Add comments to the code for clarity
+- [Will do this now] Finalize and update this README with complete setup and usage instructions
