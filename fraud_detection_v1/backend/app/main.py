@@ -7,18 +7,17 @@ from . import models
 # Pydantic models for data validation
 from pydantic import BaseModel, ConfigDict
 import datetime
-from typing import List, Optional # Import List and Optional for response model
+from typing import List, Optional
 
 # --- Step 1: Data Validation with Pydantic ---
+# Defines the shape of the data for creating a transaction
 class TransactionCreate(BaseModel):
     amount: float
     merchant: str
     location: str
 
-# --- NEW: Define the Response Model ---
-# This Pydantic model defines the data shape for a transaction being returned by the API.
-# It includes all the fields from our database model.
-# By creating a separate model for responses, we control exactly what data is sent out.
+# --- Define the Response Model ---
+# Defines the shape of data for returning a transaction
 class TransactionResponse(BaseModel):
     id: int
     amount: float
@@ -26,22 +25,25 @@ class TransactionResponse(BaseModel):
     location: str
     timestamp: datetime.datetime
     is_fraud: bool
-    fraud_reason: Optional[str] = None # This field can be a string or None
+    fraud_reason: Optional[str] = None
 
-    # This configuration tells Pydantic to read the data even if it's not a dict,
-    # but an ORM model (or any other arbitrary object with attributes).
+    # Allows pydantic to read data from ORM models
     model_config = ConfigDict(from_attributes=True)
 
 
-# This line ensures the database tables are created on startup
+# --- Database Initialization ---
+# Create all database tables (if they don't exist) on startup
 models.Base.metadata.create_all(bind=engine)
 
+# --- FastAPI App Initialization ---
 app = FastAPI(
     title="Fraud Detection API",
     description="An API for detecting fraudulent transactions.",
     version="1.0.0"
 )
 
+# --- Middleware (CORS) ---
+# Allows the frontend (running in a different domain) to talk to the backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
@@ -52,15 +54,22 @@ app.add_middleware(
 
 # --- Dependency for Database Session ---
 def get_db():
+    """
+    Dependency function to get a database session for each request.
+    Ensures the session is always closed after the request.
+    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-# --- The Rule-Based Logic ---
+# --- Business Logic (Rule Engine) ---
 def analyze_transaction(transaction: TransactionCreate):
-    """Analyzes a transaction based on a set of simple rules."""
+    """
+    Analyzes a transaction based on a set of simple rules.
+    Returns (is_fraud, reason).
+    """
     rules = [
         (transaction.amount > 1500, "Amount exceeds $1500"),
         ("darkweb" in transaction.merchant.lower(), "Transaction with high-risk merchant"),
@@ -69,18 +78,21 @@ def analyze_transaction(transaction: TransactionCreate):
 
     for condition, reason in rules:
         if condition:
-            return True, reason
+            return True, reason # Fraud detected
 
-    return False, "Legitimate"
+    return False, "Legitimate" # No fraud detected
 
+# --- API Endpoints ---
 @app.post("/transaction", response_model=TransactionResponse, tags=["Transactions"])
 def create_transaction(transaction: TransactionCreate, db: Session = Depends(get_db)):
     """
     Receives transaction data, analyzes it for fraud, saves it to the database,
     and returns the analysis result.
     """
+    # 1. Analyze the transaction
     is_fraud, reason = analyze_transaction(transaction)
 
+    # 2. Create a database model isntance
     db_transaction = models.Transaction(
         amount=transaction.amount,
         merchant=transaction.merchant,
@@ -89,6 +101,7 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
         fraud_reason=reason
     )
 
+    # 3. Add to session, commit to DB, and refresh
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
@@ -96,14 +109,12 @@ def create_transaction(transaction: TransactionCreate, db: Session = Depends(get
     return db_transaction
 
 
-# --- NEW: Create the GET Endpoint ---
-# The 'response_model=List[TransactionResponse]' tells FastAPI to expect a list of
-# items, where each item follows the structure of our TransactionResponse model.
-# FastAPI will automatically handle the data serialization.
+
 @app.get("/transactions", response_model=List[TransactionResponse], tags=["Transactions"])
 def get_all_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """
-    Retrieves a list of all transactions from the database.
+    Retrieves a list of all transactions from the database,
+    with optional pagination (skip, limit).
     """
     transactions = db.query(models.Transaction).offset(skip).limit(limit).all()
     return transactions
