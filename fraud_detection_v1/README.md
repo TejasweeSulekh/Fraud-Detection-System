@@ -1,32 +1,77 @@
-### Project Roadmap: Version 1.0
+# Real-Time Fraud Detection System (V1.0)
 
-This roadmap outlines the development plan for the initial version of the application Checkboxes can be used to track progress.
+This project is a full-stack web application that provides a real-time fraud detection service. It features a Python (FastAPI) backend, a PostgreSQL database, and a vanilla JavaScript frontend. The entire application is containerized with Docker for easy setup and deployment.
 
-### Phase 1: Project Setup (Day 1-3)
-- [✔️] Initialize the project directory structure
-- [✔️] Create a `Dockerfile` for the python backend service
-- [✔️] Create a `docker-compose.yml` file to manage the backend and database services
-- [✔️] Configure basic Docker networking and volumes for database persistence
+The first version (V1.0) implements a simple rule-based engine for detecting fraudulent transaction.
 
-### Phase 2: Database & Models (Day 4-7)
-- [✔️] Design and implement the `Transaction` table schema using SQLAlchemy ORM
-- [✔️] Establish a database connection handler that reads credentials from environment variables
-- [✔️] Implement logic to create initial database tables on startup
+---
 
-### Phase 3: Basic API (Day 8-12)
-- [✔️] Develop a `POST /transaction` endpoint to recieve new transaction data
-- [✔️] Implement the core rule-based fraud detection logic
-- [✔️] Develop a `GET /transaction` endpoint to retrieve all processed transactions
-- [✔️] Add a `GET /health` endpoint for health checks
+## Features (V1.0)
 
-### Phase 4: Frontend  (Days 13-16)
-- [✔️] Create an `index.html file with a form to submit transaction details
-- [✔️] Write `app.js` to handle form submission using the `fetch()` API to call the backend
-- [✔️] Display the fraud analysis result and transaction history on the webpage
-- [✔️] Apply basic styling with `styles.css`
+* **Restful API**: A backend API to submit and retrieve transaction
+* **Rule-Based Engine**: A simple set of rules to flag a transaction as fraudulent (e.g. based on amount, merchant name...)
+* **Database Persistence**: All transactions and their datatypes are saved in a PostgreSQL database.
+* **Web Interface**: A simple frontend to submit the transaction and view a live-updating history of all the transactions
+* **Containerized**: The full application (backend, database) is managed in Docker compose
 
-### Phase 5: Testing & Polishing (Days 17-21)
-- [✔️] Write unit tests for the rule-based logic using `pytest`
-- [✔️] Write basic integration tests for the API endpoints
-- [✔️] Add comments to the code for clarity
-- [Will do this now] Finalize and update this README with complete setup and usage instructions
+---
+
+## Tech Stack
+| Component | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Backend** | Python, FastAPI | Core API framework, data validation |
+| **Database** | PostgreSQL | Data storage for transactions |
+| **ORM** | SQLAlchemy | Python-to-SQL database communication |
+| **Frontend** | Vanilla JavaScript, HTML, CSS | User interface |
+| **DevOps** | Docker, Docker Compose | Containerization and service orchestration |
+| **Testing** | Pytest, Requests | Unit and integration testing |
+
+---
+
+## Getting Started 
+### Prerequisites
+* [Docker](https://www.docker.com/products/docker-desktop/) and **Docker Compose** must be installed on your system.
+
+### Installation & Setup
+
+1.  **Clone the repository:**
+    ```sh
+    git clone <your-repository-url>
+    cd fraud_detection_v1
+    ```
+
+2.  **Create an environment file:**
+    Create a file named `.env` in the project root. This file stores your database credentials.
+
+    ```
+    # .env
+    POSTGRES_USER=user
+    POSTGRES_PASSWORD=password
+    POSTGRES_DB=fraud_db
+    DATABASE_URL=postgresql://user:password@db:5432/fraud_db
+    ```
+
+---
+
+## How to Run the Application
+
+1.  **Build and Run the Containers:**
+    From the project's root directory, run:
+    ```sh
+    docker-compose up --build
+    ```
+    This command will build the Docker images, start the backend and database containers, and show you the live logs.
+
+2.  **Access the Services:**
+    * **Backend API Docs**: Open your browser and go to [http://localhost:8000/docs](http://localhost:8000/docs). You can interact with the API from this page
+    * **Frontend Application**: Open the `frontend/index.html` file directly in your browser
+
+---
+
+## How to Run Tests
+
+Ensure the application is running (from the `docker-compose up` command). Then, in a **new terminal**, run the following command to execute the test suite:
+
+```sh
+docker-compose exec backend pytest
+```
