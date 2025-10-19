@@ -82,3 +82,26 @@ This decoupled flow ensures that even if the `fraud-detector` is slow or crashes
 3.  **Access the Services:**
     * **Frontend Application**: Open your browser and go to [http://localhost:8000/frontend/index.html](http://localhost:8000/frontend/index.html)
     * **Backend API Docs**: You can still view the API docs at [http://localhost:8000/docs](http://localhost:8000/docs)
+
+## How to Run Tests
+
+This project includes an end-to-end integration test suite that validates the entire data pipeline, from submitting an HTTP POST to receiving a WebSocket result.
+
+1. Ensure all containers are stopped:
+```sh
+docker-compose down
+```
+2. Run the Test Suite: From the project's root directory, run:
+```sh
+docker-compose run --build tests pytest
+```
+This command will:
+- Build the `tests` container image
+- Start all dependent services (Kafka, API, detector)
+- Run the `pytest` command inside the new `tests` container
+- The test script will wait for the API to be online before running
+
+3. Clean Up After Tests: The `docker-compose run` command leaves the dependent services running. To stop them, rum:
+```sh
+docker-compose down
+```
