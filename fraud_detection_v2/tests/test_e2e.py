@@ -5,6 +5,7 @@ import requests
 import asyncio
 import websockets
 import uuid
+import time
 from datetime import datetime
 
 # --- Configuration ---
@@ -28,14 +29,33 @@ def event_loop():
     loop.close()
 
 @pytest.fixture(scope="module")
+def wait_for_api():
+    """
+    Waits for the transaction-api to be online before running any tests.
+    """
+    start_time = time.time()
+    timeout = 60  # Wait up to 60 seconds
+    
+    print(f"Waiting for API at {API_URL}/docs ...")
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"{API_URL}/docs")
+            if response.status_code == 200:
+                print(f"API is online!")
+                return
+        except requests.exceptions.ConnectionError:
+            time.sleep(2)  # Wait 2 seconds before retrying
+    
+    pytest.fail(f"Could not connect to API at {API_URL} after {timeout} seconds.")
+
+
+@pytest.fixture(scope="module")
 @pytest.mark.asyncio
-async def websocket_listener():
+async def websocket_listener(wait_for_api):
     """
     Fixture to connect to the WebSocket and listen for one message.
-    This is a bit complex, but it's the right way to test WebSockets.
+    This fixture now depends on 'wait_for_api' to ensure the API is up.
     """
-    # We use an asyncio.Queue to safely pass the message
-    # from the listening task to the main test task.
     message_queue = asyncio.Queue()
 
     async def listen(queue):
@@ -52,7 +72,6 @@ async def websocket_listener():
     # Start the listener task in the background
     listener_task = asyncio.create_task(listen(message_queue))
     
-    # Yield the queue (as the "listener") to the test
     yield message_queue
     
     # After the test is done, clean up
@@ -60,34 +79,13 @@ async def websocket_listener():
     try:
         await listener_task
     except asyncio.CancelledError:
-        pass # Task cancellation is expected
-
-
-# --- Helper Function ---
-
-def post_transaction(data):
-    """Helper to post a new transaction."""
-    try:
-        response = requests.post(f"{API_URL}/transaction", json=data)
-        response.raise_for_status() # Fail test if status is 4xx or 5xx
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        pytest.fail(f"Could not connect to API at {API_URL}. Is it running?\nError: {e}")
+        pass  # Task cancellation is expected
 
 
 # --- Tests ---
 
-@pytest.mark.timeout(10)
-def test_api_service_is_online():
-    """
-    A simple "health check" to see if the transaction-api is reachable.
-    """
-    try:
-        # Check the /docs endpoint as a health check
-        response = requests.get(f"{API_URL}/docs")
-        assert response.status_code == 200
-    except requests.exceptions.ConnectionError:
-        pytest.fail(f"Could not connect to {API_URL}. Check service name and port.")
+# We no longer need the separate test_api_service_is_online()
+# because our wait_for_api fixture handles it.
 
 @pytest.mark.timeout(E2E_TIMEOUT + 2) # Give 2 extra seconds
 @pytest.mark.asyncio
@@ -109,7 +107,14 @@ async def test_full_transaction_pipeline_e2e(websocket_listener):
     }
 
     # 2. Submit the transaction via HTTP
-    # (We run this blocking 'requests' call in an async-friendly way)
+    def post_transaction(data):
+        try:
+            response = requests.post(f"{API_URL}/transaction", json=data)
+            response.raise_for_status() # Fail test if status is 4xx or 5xx
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            pytest.fail(f"Could not post transaction: {e}")
+
     loop = asyncio.get_running_loop()
     post_response = await loop.run_in_executor(None, post_transaction, test_tx)
     assert post_response["status"] == "Transaction sent for processing"
@@ -118,7 +123,6 @@ async def test_full_transaction_pipeline_e2e(websocket_listener):
     try:
         result = await asyncio.wait_for(websocket_listener.get(), timeout=E2E_TIMEOUT)
         
-        # If we get an exception from the queue, fail the test
         if isinstance(result, Exception):
             pytest.fail(f"WebSocket listener failed: {result}")
             
@@ -126,6 +130,7 @@ async def test_full_transaction_pipeline_e2e(websocket_listener):
         pytest.fail(f"Test timed out after {E2E_TIMEOUT}s waiting for WebSocket message.")
 
     # 4. Assert the result is correct
+    print(f"Received E2E test result: {result}")
     assert result["is_fraud"] == True
     assert result["fraud_score"] == 0.9
     assert result["transaction"]["user_id"] == test_tx["user_id"]
