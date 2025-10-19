@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Fraud Detection V2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-connected { background-color: #22c55e; }
+        .status-disconnected { background-color: #ef4444; }
+        .approved { color: #16a34a; }
+        .blocked { color: #dc2626; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Fraud Detection System V2</h1>
+            <p class="text-lg text-gray-600 mt-2">Submit transactions and see real-time fraud analysis.</p>
+            <div class="flex items-center justify-center mt-4 text-sm">
+                <span id="status-dot" class="status-dot status-disconnected mr-2"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Transaction Submission Form -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Submit a New Transaction</h2>
+                <form id="transaction-form">
+                    <div class="mb-4">
+                        <label for="user_id" class="block text-sm font-medium text-gray-700">User ID</label>
+                        <input type="text" id="user_id" name="user_id" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Amount (USD)</label>
+                        <input type="number" id="amount" name="amount" step="0.01" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="merchant_id" class="block text-sm font-medium text-gray-700">Merchant ID</label>
+                        <input type="text" id="merchant_id" name="merchant_id" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
+                        Submit
+                    </button>
+                    <div id="form-message" class="mt-4 text-center text-sm"></div>
+                </form>
+            </div>
+
+            <!-- Real-time Transaction Feed -->
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Live Transaction Feed</h2>
+                <div id="results" class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    <!-- Results will be appended here -->
+                     <p class="text-gray-500 text-center py-4">Waiting for transactions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
