@@ -50,30 +50,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const decisionClass = result.is_fraud ? 'blocked' : 'approved';
-        const decisionText = result.decision;
+        const decisionText = result.is_fraud ? 'BLOCKED (Fraud)' : 'Approved';
+        const tx = result.transaction;
 
         const resultElement = document.createElement('div');
-        resultElement.className = 'p-4 border rounded-lg bg-gray-50 animate-pulse-fast';
+        resultElement.className = 'p-4 border rounded-lg bg-gray-50';
         
         resultElement.innerHTML = `
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="font-semibold text-gray-800">User: ${result.user_id}</p>
-                    <p class="text-sm text-gray-600">Merchant: ${result.merchant_id}</p>
+                    <p class="font-semibold text-gray-800">User: ${tx.user_id}</p>
+                    <p class="text-sm text-gray-600">Merchant: ${tx.merchant_id}</p>
                 </div>
                 <div class="text-right">
-                    <p class="text-lg font-bold text-gray-900">$${Number(result.amount).toFixed(2)}</p>
+                    <p class="text-lg font-bold text-gray-900">$${Number(tx.amount).toFixed(2)}</p>
                     <p class="text-sm font-bold ${decisionClass}">${decisionText}</p>
                 </div>
             </div>
             <div class="mt-2 text-xs text-gray-500">
-                <span>Fraud Score: ${result.fraud_score}</span> | <span>Timestamp: ${new Date(result.timestamp).toLocaleTimeString()}</span>
+                <span>Fraud Score: ${result.fraud_score}</span> | <span>Timestamp: ${new Date(tx.timestamp).toLocaleTimeString()}</span>
             </div>
         `;
         
         resultsContainer.prepend(resultElement);
         // Add a class to trigger animation then remove it
-        setTimeout(() => resultElement.classList.remove('animate-pulse-fast'), 500);
+        // setTimeout(() => resultElement.classList.remove('animate-pulse-fast'), 500);
     }
     
     // --- Form Submission ---
@@ -84,7 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const transactionData = {
             user_id: formData.get('user_id'),
             amount: parseFloat(formData.get('amount')),
-            merchant_id: formData.get('merchant_id')
+            merchant_id: formData.get('merchant_id'),
+            timestamp: new Date().toISOString() 
         };
 
         try {
