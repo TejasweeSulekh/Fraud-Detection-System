@@ -1,117 +1,169 @@
+# transaction_api/app/main.py
+
 import os
 import json
-import asyncio
 import logging
-from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse
-from kafka import KafkaProducer, KafkaConsumer
+import asyncio
 import time
+import functools
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from kafka import KafkaProducer, KafkaConsumer
+from kafka.errors import NoBrokersAvailable
 
 # --- Configuration ---
-KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
-TRANSACTIONS_TOPIC = os.getenv('TRANSACTIONS_TOPIC', 'transactions')
-RESULTS_TOPIC = os.getenv('RESULTS_TOPIC', 'transaction-results')
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+TRANSACTIONS_TOPIC = os.environ.get("TRANSACTIONS_TOPIC", "transactions")
+RESULTS_TOPIC = os.environ.get("RESULTS_TOPIC", "transaction-results")
 
+# --- Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- FastAPI App Initialization ---
+# --- FastAPI App ---
 app = FastAPI()
-producer = None
-consumer = None
+producer = None # Will be initialized on startup
 
-# --- Kafka Connection Handling ---
-async def get_kafka_producer():
-    """Retry connecting to Kafka until successful."""
-    global producer
-    while producer is None:
-        try:
-            producer = KafkaProducer(
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS.split(','),
-                value_serializer=lambda v: json.dumps(v).encode('utf-8')
-            )
-            logger.info("Successfully connected to Kafka Producer.")
-        except Exception as e:
-            logger.error(f"Failed to connect to Kafka Producer: {e}. Retrying in 5 seconds...")
-            await asyncio.sleep(5)
-    return producer
+# --- Pydantic Model ---
+class Transaction(BaseModel):
+    user_id: str
+    amount: float
+    merchant_id: str
+    timestamp: str
 
-async def get_kafka_consumer():
-    """Retry connecting to Kafka until successful."""
-    global consumer
-    while consumer is None:
-        try:
-            consumer = KafkaConsumer(
-                RESULTS_TOPIC,
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS.split(','),
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                auto_offset_reset='latest', # Start from the latest message
-                group_id='transaction-results-group'
-            )
-            logger.info("Successfully connected to Kafka Consumer.")
-        except Exception as e:
-            logger.error(f"Failed to connect to Kafka Consumer: {e}. Retrying in 5 seconds...")
-            await asyncio.sleep(5)
-    return consumer
+# --- WebSocket Connection Manager ---
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
 
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
 
-@app.on_event("startup")
-async def startup_event():
-    """On startup, initialize Kafka connections."""
-    app.state.kafka_producer = await get_kafka_producer()
-    app.state.kafka_consumer = await get_kafka_consumer()
-    # Start the consumer in the background
-    asyncio.create_task(consume_results())
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+manager = ConnectionManager()
 
 # --- API Endpoints ---
 @app.post("/transaction")
-async def send_transaction(request: Request):
-    """
-    Receives transaction data and sends it to the 'transactions' Kafka topic.
-    """
-    transaction_data = await request.json()
-    transaction_data['timestamp'] = int(time.time() * 1000) # Add timestamp
-    
-    producer = app.state.kafka_producer
-    producer.send(TRANSACTIONS_TOPIC, value=transaction_data)
-    producer.flush() # Ensure message is sent
-    
-    logger.info(f"Published transaction: {transaction_data}")
-    return {"status": "Transaction sent for processing"}
+async def create_transaction(transaction: Transaction):
+    if not producer:
+        logger.error("Kafka producer is not available.")
+        return {"error": "Kafka producer not available"}
+    try:
+        # The producer object itself is thread-safe
+        producer.send(TRANSACTIONS_TOPIC, transaction.dict())
+        producer.flush() # flush is blocking, let's run it in a thread
+        # await asyncio.to_thread(producer.flush) # Even better, but simple flush is ok
+        return {"status": "Transaction sent for processing"}
+    except Exception as e:
+        logger.error(f"Failed to send transaction to Kafka: {e}")
+        return {"error": "Failed to send transaction"}
 
-# --- WebSocket Handling for Real-time Results ---
-clients = set()
+# Serve the frontend
+app.mount("/frontend", StaticFiles(directory="/app/frontend", html=True), name="frontend")
 
-async def consume_results():
-    """
-    Background task to consume from the results topic and broadcast to WebSocket clients.
-    """
-    consumer = app.state.kafka_consumer
-    logger.info("Result consumer background task started.")
-    for message in consumer:
-        logger.info(f"Received result: {message.value}")
-        # Broadcast to all connected WebSocket clients
-        for client in list(clients):
-            try:
-                await client.send_text(json.dumps(message.value))
-            except Exception as e:
-                logger.warning(f"Failed to send message to client, removing: {e}")
-                clients.remove(client)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """
-    Handles WebSocket connections for real-time fraud detection results.
-    """
-    await websocket.accept()
-    clients.add(websocket)
-    logger.info("New WebSocket client connected.")
+    await manager.connect(websocket)
+    logger.info("Client connected to WebSocket.")
     try:
         while True:
-            # Keep the connection alive
             await websocket.receive_text()
-    except Exception:
-        logger.info("WebSocket client disconnected.")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info("Client disconnected from WebSocket.")
+
+
+# --- BLOCKING CONSUMER FUNCTION ---
+# This function is NOT async. It's designed to run in a separate thread.
+def blocking_consumer_loop(loop: asyncio.AbstractEventLoop, manager: ConnectionManager):
+    consumer = None
+    retries = 10
+    while retries > 0 and consumer is None:
+        try:
+            # This is a blocking call
+            consumer = KafkaConsumer(
+                RESULTS_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                group_id="transaction-results-group",
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                auto_offset_reset='earliest'
+            )
+            logger.info("Result consumer successfully connected to Kafka.")
+        except NoBrokersAvailable:
+            logger.error(f"Could not connect result consumer to Kafka. Retrying in 5 seconds... ({retries} retries left)")
+            retries -= 1
+            time.sleep(5) # Use blocking sleep (it's OK, we are in a thread)
+
+    if not consumer:
+        logger.critical("Could not connect to Kafka for consuming results. Aborting consumer thread.")
+        return
+
+    try:
+        # This 'for' loop is also blocking
+        for message in consumer:
+            logger.info(f"Received result: {message.value}")
+            
+            # We are in a thread, so we can't 'await'
+            # We must safely schedule the async broadcast on the main event loop
+            broadcast_task = manager.broadcast(json.dumps(message.value))
+            asyncio.run_coroutine_threadsafe(broadcast_task, loop)
+            
+    except Exception as e:
+        logger.error(f"An error occurred while consuming results: {e}")
     finally:
-        clients.remove(websocket)
+        consumer.close()
+        logger.info("Result consumer thread shutting down.")
+
+
+# --- FULLY NON-BLOCKING STARTUP EVENT ---
+@app.on_event("startup")
+async def startup_event():
+    global producer
+    global manager
+    loop = asyncio.get_event_loop()
+
+    # --- 1. Connect Producer in a Thread ---
+    def connect_producer():
+        # This is a local, blocking function
+        prod = None
+        retries = 10
+        while retries > 0 and prod is None:
+            try:
+                prod = KafkaProducer(
+                    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+                )
+                logger.info("Successfully connected to Kafka Producer.")
+            except NoBrokersAvailable:
+                logger.error(f"Could not connect to Kafka Producer. Retrying in 5 seconds... ({retries} retries left)")
+                retries -= 1
+                time.sleep(5) # Blocking sleep
+        return prod
+
+    # await asyncio.to_thread() runs the blocking function in a thread
+    # and waits for it without blocking the main event loop.
+    producer = await asyncio.to_thread(connect_producer)
+
+    if producer is None:
+        logger.critical("Could not connect to Kafka Producer after multiple retries. API will not be able to send messages.")
+
+    # --- 2. Run Consumer Loop in Background Thread ---
+    
+    # We use functools.partial to pass arguments to the blocking function
+    consumer_task = functools.partial(blocking_consumer_loop, loop, manager)
+    
+    # loop.run_in_executor() runs the function in a thread pool
+    # and does NOT wait for it. This lets startup finish.
+    loop.run_in_executor(None, consumer_task)
+    
+    logger.info("FastAPI app startup complete.")
