@@ -45,16 +45,16 @@ Goal: Create the intelligent core of our system. Success means having a high-per
     - [✔️] **Establish core project structure**: Create `src/`, `data/`, `notebooks/` directories
 
 - **Phase 2: Advanced Modeling & Experiment Tracking**
-    - [] **Develop a reproducible training script**: Create `src/train.py` for data loading and XGBoost training
-    - [] **Integrate MLflow**: Use `mlflow.start_run()` to log params, metrics (Precision/Recall), and artifacts
-    - [] **Validate experiment tracking**: Confirm runs are viewable via `mlflow ui` (run via `poetry run mlflow ui`)
+    - [✔️] **Develop a reproducible training script**: Create `src/train.py` for data loading and XGBoost training
+    - [✔️] **Integrate MLflow**: Use `mlflow.start_run()` to log params, metrics (Precision/Recall), and artifacts
+    - [✔️] **Validate experiment tracking**: Confirm runs are viewable via `mlflow ui` (run via `poetry run mlflow ui`)
 - **Phase 3: Model Serving via API**
-    - [] **Build a FastAPI service**: Create `src/inference_service/main.py`
+    - [✔️] **Build a FastAPI service**: Create `src/inference_service/main.py`
     - [] **Load production model**: Implement logic to pull the latest model from the MLflow Model Registry
-    - [] **Create /predict endpoint**: Accept transaction JSON and return a fraud score
+    - [✔️] **Create /predict endpoint**: Accept transaction JSON and return a fraud score
 - **Phase 4: Model Explainability (XAI)**
-    - [] **Log SHAP explainer**: In `train.py`, log a `shap.TreeExplainer` as an MLflow artifact
-    - [] **Create `/explain` endpoint**: Provide feature contribution analysis for any given transaction
+    - [✔️] **Log SHAP explainer**: In `train.py`, log a `shap.TreeExplainer` as an MLflow artifact
+    - [✔️] **Create `/explain` endpoint**: Provide feature contribution analysis for any given transaction
 
 **v3.1: The Real-Time Streaming Architecture**
 
