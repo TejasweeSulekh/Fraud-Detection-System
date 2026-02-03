@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict
 import shap
+import time
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -61,30 +62,39 @@ async def load_artifacts():
     """
     global model, explainer, feature_names
     
-    try:
-        # 1. Load the Model from Registry (Stage: None by default, or specific version)
-        # In a real setup, we'd use: model_uri = f"models:/FraudDetectionSOTA/Production"
-        # For local development, we pull the latest logged model
-        model_name = "FraudDetectionSOTA"
-        model_uri = f"models:/{model_name}/latest"
-        
-        print(f"Loading model from: {model_uri}...")
-        model = mlflow.sklearn.load_model(model_uri)
-        
-        # 2. Reconstruct Explainer
-        # We extract the classifier from the pipeline for SHAP
-        classifier = model.named_steps['classifier']
-        explainer = shap.TreeExplainer(classifier)
-        
-        # 3. Load Metadata (Logged in Phase 2)
-        # In a real MLOps environment, we'd fetch the dict logged in train.py
-        feature_names = [f'V{i}' for i in range(1, 29)]
-        feature_names = ['Time'] + feature_names + ['Amount']
-        
-        print("Model and Explainer loaded successfully.")
-    except Exception as e:
-        print(f"Error loading model from MLflow: {e}")
-        print("Hint: Make sure you ran train.py first and the MLflow UI is accessible.")
+    # Retry logic for startup race conditions
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            print(f"Attempting to load model (Try {attempt+1}/{max_retries})...")
+            # 1. Load the Model from Registry (Stage: None by default, or specific version)
+            # In a real setup, we'd use: model_uri = f"models:/FraudDetectionSOTA/Production"
+            # For local development, we pull the latest logged model
+            model_name = "FraudDetectionSOTA"
+            model_uri = f"models:/{model_name}/latest"
+            
+            print(f"Loading model from: {model_uri}...")
+            model = mlflow.sklearn.load_model(model_uri)
+            
+            # 2. Reconstruct Explainer
+            # We extract the classifier from the pipeline for SHAP
+            classifier = model.named_steps['classifier']
+            explainer = shap.TreeExplainer(classifier)
+            
+            # 3. Load Metadata (Logged in Phase 2)
+            # In a real MLOps environment, we'd fetch the dict logged in train.py
+            feature_names = [f'V{i}' for i in range(1, 29)]
+            feature_names = ['Time'] + feature_names + ['Amount']
+            
+            print("Model and Explainer loaded successfully.")
+            return
+        except Exception as e:
+            print(f"Error loading model from MLflow: {e}")
+            if attempt < max_retries - 1:
+                print("Waiting for MLflow server... sleeping 5s")
+                time.sleep(5)
+            else:
+                print("CRITICAL: Failed to load model after retries.")
 
 @app.get("/")
 def health_check():

@@ -74,6 +74,49 @@ Goal: Create the intelligent core of our system. Success means having a high-per
     - [] Create an `Inference Consumer` to subscribe to enriched data
     - [] Trigger model scoring via the FastAPI `/predict` endpoint
 
+---
+Phase 5: Observability & Interaction.
+
+Here is the roadmap for this phase. We will add three distinct layers to your current setup:
+
+1. The "Routine" (Automated Health/Smoke Test)
+You asked: "Where this check can happen when the server goes online?"
+
+This is best implemented as a "Smoke Test Script".
+
+What it is: A Python script (check_system.py) that runs outside the containers (or in a temporary container).
+
+When it runs: Immediately after you run docker-compose up.
+
+What it checks:
+
+MLflow: Is the server responding on port 5000?
+
+Inference: Is the API responding on port 8000?
+
+Model Availability: Can the API actually load the model?
+
+End-to-End: If we send a dummy transaction, do we get a prediction (0 or 1) back?
+
+2. The User Interface (Streamlit)
+We will add a simple, friendly website where you (or a fraud analyst) can:
+
+Manually enter transaction details (using sliders/inputs).
+
+Click "Detect Fraud."
+
+See the probability score visually.
+
+Bonus: See a "System Status" light (Green/Red) powered by your health check.
+
+3. Monitoring (Prometheus & Grafana)
+This is for the "heartbeat" of the system over time.
+
+Prometheus: Silently records metrics (e.g., "Inference API took 0.1s", "50 requests per minute").
+
+Grafana: A dashboard with graphs showing traffic spikes or errors.
+---
+
 **v3.2: The MLOps & Production Polish**
 
 **Goal**: Implement professional monitoring and automation

@@ -16,7 +16,7 @@ def load_data():
     Note: In a real environment, you would use 'kaggle datasets download' 
     or pull from an S3 bucket. Here we assume creditcard.csv is in data/
     """
-    data_path = "data/creditcard.csv"
+    data_path = "/home/tejaswee/Projects/Fraud_Detection/Data/creditcard.csv"
     if not os.path.exists(data_path):
         print(f"Dataset not found at {data_path}. Generating synthetic SOTA-structured data for demonstration...")
         # Create a mock Kaggle structure: Time, V1-V28, Amount, Class
@@ -33,8 +33,27 @@ def load_data():
     return pd.read_csv(data_path)
 
 def train_fraud_model():
-    # 1. Setup MLflow
-    mlflow.set_experiment("Fraud_Detection_V3_SOTA")
+# We point to localhost:5000 where the docker container is exposed
+    uri = "http://localhost:5000"
+    mlflow.set_tracking_uri(uri)
+    
+    print(f"Connecting to MLflow Tracking Server at {uri}...")
+    
+    # Simple check to ensure server is up before wasting compute
+    try:
+        mlflow.search_experiments()
+        print("Connection successful!")
+    except Exception as e:
+        print(f"❌ Could not connect to MLflow server. Is Docker running? Error: {e}")
+        return
+
+    # --- CRITICAL FIX 2: ENSURE EXPERIMENT EXISTS ---
+    experiment_name = "Fraud_Detection_V3_SOTA"
+    try:
+        mlflow.set_experiment(experiment_name)
+    except:
+        mlflow.create_experiment(experiment_name)
+        mlflow.set_experiment(experiment_name)
 
     with mlflow.start_run(run_name="XGBoost_SOTA_Tuning"):
         # 2. Data Preparation
@@ -42,27 +61,24 @@ def train_fraud_model():
         X = df.drop('Class', axis=1)
         y = df['Class']
         
-        # Calculate scale_pos_weight for imbalance: (count of negative / count of positive)
-        # This is a SOTA technique for fraud detection
         imbalance_ratio = (len(y) - y.sum()) / y.sum()
         
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
 
-        # 3. Define Pipeline (Scaling + XGBoost)
-        # SOTA parameters for XGBoost on imbalanced data
+        # 3. Define Pipeline
         pipeline = Pipeline([
             ('scaler', StandardScaler()),
             ('classifier', XGBClassifier(
-                n_estimators=500,        # More trees for complexity
-                max_depth=4,             # Shallower trees prevent overfitting on noise
-                learning_rate=0.05,      # Slower learning is more robust
-                subsample=0.8,           # Use 80% of data per tree to prevent overfitting
-                colsample_bytree=0.8,    # Use 80% of features per tree
-                scale_pos_weight=imbalance_ratio, # CRITICAL: Handle the 0.17% imbalance
+                n_estimators=500,
+                max_depth=4,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                scale_pos_weight=imbalance_ratio,
                 use_label_encoder=False,
-                eval_metric='aucpr',      # Optimize for Area Under Precision-Recall Curve (SOTA for fraud)
+                eval_metric='aucpr',
                 random_state=42
             ))
         ])
@@ -84,14 +100,19 @@ def train_fraud_model():
         mlflow.log_metric("auc_pr", aucs_pr)
         
         # 6. SHAP Explainability
-        # Industry Standard: Explaining why a high-risk score was generated
         print("Calculating SHAP values...")
-        explainer = shap.TreeExplainer(pipeline.named_steps['classifier'])
-        # We store the explainer metadata to be used by the API in Phase 4
-        mlflow.log_dict({"explainer_type": "TreeExplainer", "feature_names": X.columns.tolist()}, "explainer_info.json")
+        # Note: We must unwrap the pipeline to get the model for SHAP
+        model = pipeline.named_steps['classifier']
+        explainer = shap.TreeExplainer(model)
+        
+        # Log explainer metadata
+        mlflow.log_dict({
+            "explainer_type": "TreeExplainer", 
+            "feature_names": X.columns.tolist()
+        }, "explainer_info.json")
 
-        # 7. Log Model & Pipeline
-        # We log using the sklearn flavor because our model is inside a Pipeline
+        # 7. Log Model
+        print("Logging model artifact to MLflow...")
         mlflow.sklearn.log_model(
             sk_model=pipeline,
             artifact_path="fraud_model_pipeline",

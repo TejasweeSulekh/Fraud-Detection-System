@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  inference-service:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    volumes:
+      # CRITICAL: Map the host's mlruns to the container's mlruns
+      - ./mlruns:/app/mlruns
+    depends_on:
+      - mlflow-server
+    restart: on-failure
+    networks:
+      - fraud-network
+
+  mlflow-server:
+    # We switch to a standard Python image to bypass the "Host Header" restriction
+    image: python:3.12-slim
+    container_name: mlflow-server
+    working_dir: /app
+    ports:
+      - "5000:5000"
+    # We manually install mlflow and run it. This version is more lenient.
+    command: >
+      sh -c "pip install mlflow==2.14.1 setuptools && 
+      /usr/local/bin/mlflow server
+      --backend-store-uri sqlite:///mlflow.db 
+      --default-artifact-root /app/mlruns 
+      --host 0.0.0.0 
+      --port 5000"
+    volumes:
+      - ./mlruns:/app/mlruns
+      - ./mlflow.db:/app/mlflow.db
+    restart: on-failure
+    networks:
+      - fraud-network
+
+  # mlflow-server:
+  #   # --- CRITICAL FIX 3: VERSION MATCHING ---
+  #   # Updated from v2.10.2 to v3.8.1 to match your pyproject.toml
+  #   image: ghcr.io/mlflow/mlflow:v3.8.1
+  #   ports:
+  #     - "5000:5000"
+  #   command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /app/mlruns
+  #   volumes:
+  #     - ./mlruns:/app/mlruns
+  #     # Map the db file
+  #     - ./mlflow.db:/mlflow.db
+  #   restart: on-failure
+  #   networks:
+  #     - fraud-network
+
+  # The Nervous System (Zookeeper & Kafka)
+  # Switching to Confluent Platform images - the industry standard for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: on-failure
+    networks:
+      - fraud-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    restart: on-failure
+    networks:
+      - fraud-network
+
+  # The Memory (Redis)
+  # Using the official Redis image
+  redis:
+    image: redis:7.2-bookworm
+    ports:
+      - "6379:6379"
+    restart: on-failure
+    networks:
+      - fraud-network
+
+networks:
+  fraud-network:
+    driver: bridge
