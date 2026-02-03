@@ -3,93 +3,81 @@ version: '3.8'
 services:
   inference-service:
     build: .
+    container_name: fraud-inference-service
     ports:
       - "8000:8000"
     environment:
+      # CRITICAL: Inside the network, we must call the service by name 'mlflow-server'
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      # Future-proofing for Redis/Kafka
+      - REDIS_HOST=redis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     volumes:
-      # CRITICAL: Map the host's mlruns to the container's mlruns
+      # We map the local mlruns so the app can read the models you trained locally
       - ./mlruns:/app/mlruns
     depends_on:
       - mlflow-server
-    restart: on-failure
+      - redis
+      - kafka
     networks:
       - fraud-network
 
   mlflow-server:
-    # We switch to a standard Python image to bypass the "Host Header" restriction
     image: python:3.12-slim
     container_name: mlflow-server
     working_dir: /app
     ports:
       - "5000:5000"
-    # We manually install mlflow and run it. This version is more lenient.
+    # Install MLflow and run the server
     command: >
-      sh -c "pip install mlflow==2.14.1 setuptools && 
-      /usr/local/bin/mlflow server
+      sh -c "pip install mlflow==2.14.1 && 
+      mlflow server 
       --backend-store-uri sqlite:///mlflow.db 
       --default-artifact-root /app/mlruns 
       --host 0.0.0.0 
       --port 5000"
     volumes:
       - ./mlruns:/app/mlruns
+      # We map the specific DB file. 
+      # IMPORTANT: You must run 'touch mlflow.db' on your host machine before starting!
       - ./mlflow.db:/app/mlflow.db
-    restart: on-failure
     networks:
       - fraud-network
 
-  # mlflow-server:
-  #   # --- CRITICAL FIX 3: VERSION MATCHING ---
-  #   # Updated from v2.10.2 to v3.8.1 to match your pyproject.toml
-  #   image: ghcr.io/mlflow/mlflow:v3.8.1
-  #   ports:
-  #     - "5000:5000"
-  #   command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /app/mlruns
-  #   volumes:
-  #     - ./mlruns:/app/mlruns
-  #     # Map the db file
-  #     - ./mlflow.db:/mlflow.db
-  #   restart: on-failure
-  #   networks:
-  #     - fraud-network
-
-  # The Nervous System (Zookeeper & Kafka)
-  # Switching to Confluent Platform images - the industry standard for Kafka
+  # --- Future Infrastructure (Kafka & Redis) ---
+  
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    ports:
-      - "2181:2181"
+    container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    restart: on-failure
     networks:
       - fraud-network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    ports:
-      - "9092:9092"
+    container_name: kafka
     depends_on:
       - zookeeper
+    ports:
+      - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      # Listeners for Docker internal and Host external access
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    restart: on-failure
     networks:
       - fraud-network
 
-  # The Memory (Redis)
-  # Using the official Redis image
   redis:
     image: redis:7.2-bookworm
+    container_name: redis
     ports:
       - "6379:6379"
-    restart: on-failure
     networks:
       - fraud-network
 
