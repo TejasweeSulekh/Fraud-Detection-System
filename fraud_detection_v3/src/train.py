@@ -25,8 +25,9 @@ def load_data():
     # Look for data relative to this script
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Go up one level to root, then into data/
-    project_root = os.path.dirname(current_dir)
-    data_path = os.path.join(project_root, "data", "creditcard.csv")
+    # project_root = os.path.dirname(current_dir)
+    data_path = "/home/tejaswee/Projects/Fraud_Detection/Data/creditcard.csv"
+    # data_path = os.path.join(project_root, "data", "creditcard.csv")
 
     if os.path.exists(data_path):
         print(f"📂 Loading real dataset from {data_path}...")

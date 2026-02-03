@@ -1,47 +1,32 @@
 import requests
+import random
 
-# The URL of your dockerized inference service
+# URL of the API (localhost:8000 because we access it from outside Docker)
 url = "http://localhost:8000/predict"
 
-# A fake transaction payload (matches the features your model expects)
-payload = {
-    "features": [
-        0.0,    # Time
-        -1.35,  # V1
-        1.25,   # V2
-        -0.5,   # V3
-        0.5,    # V4
-        -0.5,   # V5
-        0.5,    # V6
-        0.2,    # V7
-        -0.1,   # V8
-        0.0,    # V9
-        0.1,    # V10
-        -0.5,   # V11
-        0.0,    # V12
-        0.5,    # V13
-        -0.3,   # V14
-        0.2,    # V15
-        0.1,    # V16
-        -0.5,   # V17
-        0.0,    # V18
-        0.5,    # V19
-        -0.2,   # V20
-        0.1,    # V21
-        -0.5,   # V22
-        0.0,    # V23
-        0.1,    # V24
-        -0.2,   # V25
-        0.1,    # V26
-        0.5,    # V27
-        -0.1,   # V28
-        50.0    # Amount
-    ]
+# Generate a fake transaction dictionary matching the Pydantic schema
+# We create a dictionary with Time, V1..V28, and Amount
+fake_transaction = {
+    "Time": 100.0,
+    "Amount": 500.0
 }
+# Add V1 through V28
+for i in range(1, 29):
+    fake_transaction[f"V{i}"] = random.uniform(-1.0, 1.0)
+
+# The API expects a LIST of transactions
+payload = [fake_transaction]
 
 try:
+    print("Sending request to API...")
     response = requests.post(url, json=payload)
-    print(f"Status Code: {response.status_code}")
-    print(f"Prediction: {response.json()}")
+    
+    if response.status_code == 200:
+        print("✅ Success!")
+        print("Response:", response.json())
+    else:
+        print(f"❌ Failed: {response.status_code}")
+        print("Detail:", response.text)
+
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"❌ Connection Error: {e}")

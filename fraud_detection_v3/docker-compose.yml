@@ -30,7 +30,7 @@ services:
       - "5000:5000"
     # Install MLflow and run the server
     command: >
-      sh -c "pip install mlflow==2.14.1 && 
+      sh -c "pip install mlflow==2.14.1 setuptools && 
       mlflow server 
       --backend-store-uri sqlite:///mlflow.db 
       --default-artifact-root /app/mlruns 
