@@ -1,5 +1,6 @@
 import requests
 import random
+import uuid
 
 # URL of the API (localhost:8000 because we access it from outside Docker)
 url = "http://localhost:8000/predict"
@@ -7,6 +8,7 @@ url = "http://localhost:8000/predict"
 # Generate a fake transaction dictionary matching the Pydantic schema
 # We create a dictionary with Time, V1..V28, and Amount
 fake_transaction = {
+    "transaction_id": str(uuid.uuid4()),
     "Time": 100.0,
     "Amount": 500.0
 }
