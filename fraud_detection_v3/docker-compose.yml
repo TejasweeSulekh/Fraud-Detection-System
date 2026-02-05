@@ -12,6 +12,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - DATABASE_URL=postgresql://fraud_user:fraud_pass@postgres:5432/fraud_db
     volumes:
       - ./src:/app/src       # Maps code for live reloading
       - ./mlruns:/app/mlruns # Maps local models
@@ -19,6 +20,21 @@ services:
       - mlflow-server
       - redis
       - kafka
+      - postgres
+    networks:
+      - fraud-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: fraud_user
+      POSTGRES_PASSWORD: fraud_pass
+      POSTGRES_DB: fraud_db
+    ports:
+      - "5432:5432" # Exposed so you can check it with a GUI (like DBeaver)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - fraud-network
 
