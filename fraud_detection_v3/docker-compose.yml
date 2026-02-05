@@ -1,20 +1,20 @@
 version: '3.8'
 
 services:
+  # --- MAIN API SERVICE (Merged inference-service + web_api) ---
   inference-service:
     build: .
     container_name: fraud-inference-service
     ports:
-      - "8000:8000"
+      - "8000:8000"  # HOST:CONTAINER (We use 8000 to avoid conflict with MLflow's 5000)
     environment:
-      # CRITICAL: Inside the network, we must call the service by name 'mlflow-server'
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-      # Future-proofing for Redis/Kafka
       - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     volumes:
-      # We map the local mlruns so the app can read the models you trained locally
-      - ./mlruns:/app/mlruns
+      - ./src:/app/src       # Maps code for live reloading
+      - ./mlruns:/app/mlruns # Maps local models
     depends_on:
       - mlflow-server
       - redis
@@ -22,13 +22,13 @@ services:
     networks:
       - fraud-network
 
+  # --- MLFLOW TRACKING SERVER ---
   mlflow-server:
     image: python:3.12-slim
     container_name: mlflow-server
     working_dir: /app
     ports:
-      - "5000:5000"
-    # Install MLflow and run the server
+      - "5000:5000" # MLflow takes port 5000
     command: >
       sh -c "pip install mlflow==2.14.1 setuptools && 
       mlflow server 
@@ -38,14 +38,11 @@ services:
       --port 5000"
     volumes:
       - ./mlruns:/app/mlruns
-      # We map the specific DB file. 
-      # IMPORTANT: You must run 'touch mlflow.db' on your host machine before starting!
       - ./mlflow.db:/app/mlflow.db
     networks:
       - fraud-network
 
-  # --- Future Infrastructure (Kafka & Redis) ---
-  
+  # --- INFRASTRUCTURE (Kafka & Redis) ---
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -66,7 +63,7 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       # Listeners for Docker internal and Host external access
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
