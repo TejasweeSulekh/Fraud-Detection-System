@@ -130,5 +130,3 @@ Grafana: A dashboard with graphs showing traffic spikes or errors.
 - **Phase 3: Final Documentation**
     - [] Create a comprehensive architecture diagram
     - [] Write detailed API documentation and ensure professional docstrings throughout
-
-TODO: Right now have to implement redis and kafka and then check what extra things can be implemented.
