@@ -1,46 +1,31 @@
-# Use python 3.12 slim image
 FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
-# 1. PYTHONUNBUFFERED: Ensures logs are streamed directly to the console
-# 2. PYTHONPATH: Tells Python to look for modules in /app (fixes src import issues)
+# Ensure logs are visible and Poetry doesn't create unwanted folders
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1
 
-# Install system dependencies
-# build-essential: for compiling some python packages
-# curl: for healthchecks
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
 RUN pip install poetry==1.8.2
 
-# Copy configuration files first (for caching layers)
-COPY pyproject.toml poetry.lock ./
+# Copy config files
+COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies
-# --no-root: Do not install the project itself yet, just libs
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root
+# Install everything (including Streamlit) in one layer
+RUN poetry install --no-root --no-ansi
 
-RUN pip install psycopg2-binary sqlalchemy
-
-# Copy the source code
+# Copy source
 COPY src/ ./src/
-
-# Create directory for MLflow artifacts to prevent permission errors
 RUN mkdir -p /app/mlruns
 
-# Expose the API port
 EXPOSE 8000
-
-# Run the API
-# We point to src.app:app. Host 0.0.0.0 is required for Docker networking.
+# Default command (overridden by docker-compose for other services)
 CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]

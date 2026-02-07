@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints
+
+# --- PROJECT SPECIFIC ---
+
+# 1. Ignore the Dataset (The downloader handles this)
+data/creditcard.csv
+data/*.zip
+
+# 2. Ignore MLflow Artifacts & DB (These are generated at runtime)
+mlruns/
+mlflow.db
+*.db
+*.sqlite
+
+# 3. Ignore Docker mount points (if any local folders get created)
+postgres_data/
+
+# 4. IDE settings
+.vscode/
+.idea/

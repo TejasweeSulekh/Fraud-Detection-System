@@ -5,14 +5,19 @@ import uuid
 import logging
 from confluent_kafka import Producer
 import socket
+import os
 
 # Setup Logging
-logging.basicConfig(level=logging.INFO)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
 logger = logging.getLogger("Producer")
+
+# --- CONFIGURATION ---
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 # Kafka Configuration
 conf = {
-    'bootstrap.servers': 'localhost:9092', # Change to 'kafka:29092' if running INSIDE Docker
+    'bootstrap.servers': KAFKA_BROKER,
     'client.id': socket.gethostname()
 }
 
@@ -26,7 +31,7 @@ def delivery_callback(err, msg):
     else:
         # msg.key() returns bytes, so we decode for printing
         key = msg.key().decode('utf-8') if msg.key() else "None"
-        logger.info(f"✅ Sent: {key} to partition {msg.partition()}")
+        logger.debug(f"✅ Sent: {key} to partition {msg.partition()}")
 
 def generate_fake_transaction():
     """Generates a dict matching the model schema"""

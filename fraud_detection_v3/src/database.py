@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, D
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+import json
 
 # 1. Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://fraud_user:fraud_pass@localhost:5432/fraud_db")
@@ -23,6 +24,7 @@ class PredictionLog(Base):
     fraud_probability = Column(Float)
     execution_time_ms = Column(Float, nullable=True) # Optional: track latency
     timestamp = Column(DateTime, default=datetime.utcnow)
+    input_data = Column(String, nullable=True)
 
 # 4. Create Tables (Run this once on startup)
 def init_db():
@@ -33,7 +35,7 @@ def init_db():
         print(f"❌ Database connection failed: {e}")
 
 # 5. Helper to save data
-def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0):
+def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_data = None):
     session = SessionLocal()
     try:
         record = PredictionLog(
@@ -41,7 +43,8 @@ def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0):
             amount=amount,
             is_fraud=is_fraud,
             fraud_probability=prob,
-            execution_time_ms=latency
+            execution_time_ms=latency,
+            input_data=json.dumps(input_data) if input_data else None
         )
         session.add(record)
         session.commit()

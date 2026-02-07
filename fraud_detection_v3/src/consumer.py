@@ -7,17 +7,18 @@ from confluent_kafka import Consumer
 # --- CONFIGURATION ---
 # If running locally, we hit localhost:8000
 # If running inside Docker later, we would use http://inference-service:8000
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 API_URL = os.getenv("INFERENCE_API_URL", "http://localhost:8000/predict")
-
 # Kafka Config
 conf = {
-    'bootstrap.servers': 'localhost:9092',
-    'group.id': 'fraud-detector-group-1',  # Consumer Group ID
-    'auto.offset.reset': 'earliest'        # Start from beginning if no offset is found
+    'bootstrap.servers': KAFKA_BROKER,
+    'group.id': 'fraud-detector-group-1',
+    'auto.offset.reset': 'earliest'
 }
 
 # Setup Logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s | %(levelname)s | %(message)s')
 logger = logging.getLogger("Consumer")
 
 def process_transaction(transaction_data):
@@ -71,18 +72,15 @@ if __name__ == "__main__":
                     # 4. Handle Result
                     is_fraud = prediction["is_fraud"]
                     prob = prediction["fraud_probability"]
+                    tx_id = tx_data.get("transaction_id", "Unknown")
                     source = prediction.get("source", "model")
                     
                     if is_fraud:
                         # 🚨 FRAUD ALERT VISUAL 🚨
-                        print(f"\n🚨🚨 FRAUD DETECTED! 🚨🚨")
-                        print(f"ID: {tx_id}")
-                        print(f"Confidence: {prob:.4f}")
-                        print(f"Source: {source}")
-                        print("-" * 30 + "\n")
+                        logger.warning(f"🚨 FRAUD DETECTED! ID: {tx_id} | Confidence: {prob:.4f}")
                     else:
                         # Normal log
-                        logger.info(f"✅ Legit (ID: {tx_id[-6:]}...) | Risk: {prob:.4f} | Src: {source}")
+                        logger.debug(f"✅ Legit (ID: {tx_id[-6:]}...) | Risk: {prob:.4f}")
                         
             except Exception as e:
                 logger.error(f"Processing error: {e}")

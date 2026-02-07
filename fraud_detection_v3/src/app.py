@@ -179,7 +179,8 @@ def predict_batch(transactions: List[Transaction]):
                     amount=tx_obj.Amount,
                     is_fraud=bool(pred),
                     prob=float(prob),
-                    latency=inference_time
+                    latency=inference_time,
+                    input_data=tx_obj.dict()
                 )
                 
                 results_map[original_index] = result

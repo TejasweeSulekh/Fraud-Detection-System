@@ -1,19 +1,9 @@
-[project]
+[tool.poetry]
 name = "fraud-detection-v3"
 version = "0.1.0"
 description = "Real-time Fraud Detection System with MLOps and XAI"
-authors = [
-    {name = "TejasweeSulekh", email = "20d070082@iitb.ac.in"}
-]
-readme = "README.md"
-requires-python = ">=3.10,<3.13" 
-
-[tool.poetry]
-# Note: Poetry uses this section for dependency resolution
-name = "fraud-detection-v3"
-version = "0.1.0"
-description = ""
 authors = ["TejasweeSulekh <20d070082@iitb.ac.in>"]
+readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
@@ -26,10 +16,14 @@ scikit-learn = "^1.5.0"
 pandas = "^2.2.0"
 numpy = "<2.0.0"
 requests = "^2.31.0"
-
-# Future-proofing: Adding clients for Redis and Kafka now so we don't rebuild later
 redis = "^5.0.1"
-confluent-kafka = "^2.3.0" 
+confluent-kafka = "^2.3.0"
+psycopg2-binary = "^2.9.9"
+sqlalchemy = "^2.0.25"
+# MOVED THESE INSIDE THE DEPENDENCY BLOCK:
+streamlit = "^1.31.0"
+plotly = "^5.18.0"
+watchdog = "^4.0.0"
 
 [build-system]
 requires = ["poetry-core"]

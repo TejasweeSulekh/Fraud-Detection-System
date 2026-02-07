@@ -1,48 +1,76 @@
+# src/train_in_docker.py
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier # Using RF for stability, or swap to XGBoost
+import os
+import logging
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from src.utils import download_and_extract_data
 
-# MLflow Config
-mlflow.set_tracking_uri("http://mlflow-server:5000")
+# --- CONFIGURATION ---
+MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
+# REPLACE THIS with your actual Google Drive File ID
+FILE_ID = "1q946EqSrkl1_BnbycMoSJe5As3VmuJQn" 
+DATA_DIR = "data"
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("Trainer")
+
+mlflow.set_tracking_uri(MLFLOW_URI)
 mlflow.set_experiment("FraudDetection_Docker_Build")
 
 def train():
-    print("🚀 Starting Training inside Docker...")
+    logger.info("Starting Training Pipeline...")
     
-    # 1. Generate Dummy Data (matching your schema)
-    # We use dummy data just to fix the "Architecture Mismatch" crash quickly.
-    # In real life, you'd mount your CSV to /app/data/
-    X, y = make_classification(n_samples=1000, n_features=29, n_informative=20, random_state=42)
+    # 1. Data Ingestion
+    csv_path = download_and_extract_data(FILE_ID, DATA_DIR)
     
-    # Feature names V1..V28 + Time (29 columns) - we simulate the structure
-    cols = ['Time'] + [f"V{i}" for i in range(1, 29)]
-    X_df = pd.DataFrame(X, columns=cols)
-    # Just setting 'Amount' as V28 for simplicity or adding it
-    X_df['Amount'] = 100.0 
-    
-    # 2. Define Pipeline
-    # Using RandomForest momentarily to ensure stability, change back to XGBoost if you have it installed
+    if csv_path and os.path.exists(csv_path):
+        logger.info(f"Loading real data from {csv_path}...")
+        df = pd.read_csv(csv_path)
+        
+        # Depending on dataset size, you might want to sample for speed during dev
+        # df = df.sample(frac=0.1, random_state=42) 
+        
+        X = df.drop(['Class'], axis=1) # Assuming 'Class' is target
+        y = df['Class']
+    else:
+        logger.warning("Real data not found. Falling back to SYNTHETIC data.")
+        X, y = make_classification(n_samples=1000, n_features=30, n_informative=20, random_state=42)
+        # Fix column names to match schema (Time, V1...V28, Amount)
+        cols = ['Time'] + [f"V{i}" for i in range(1, 29)] + ['Amount']
+        X = pd.DataFrame(X, columns=cols)
+
+    # 2. Split Data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # 3. Define Pipeline
+    # Using Random Forest for stability. XGBoost is preferred for production performance.
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        ('classifier', RandomForestClassifier(n_estimators=10))
+        ('classifier', RandomForestClassifier(n_estimators=50, n_jobs=-1))
     ])
 
-    # 3. Train & Register
+    # 4. Train & Register
     with mlflow.start_run():
-        print("🧠 Training Model...")
-        pipeline.fit(X_df, y)
+        logger.info("Training Model...")
+        pipeline.fit(X_train, y_train)
         
-        print("💾 Registering Model to MLflow...")
+        logger.info("Registering Model to MLflow...")
         mlflow.sklearn.log_model(
             pipeline, 
             "model", 
             registered_model_name="FraudDetectionSOTA"
         )
-        print("✅ Model Registered! Version updated.")
+        
+        # Log metrics
+        accuracy = pipeline.score(X_test, y_test)
+        mlflow.log_metric("accuracy", accuracy)
+        logger.info(f"Model Registered! Accuracy: {accuracy:.4f}")
 
 if __name__ == "__main__":
     train()
