@@ -1,132 +1,105 @@
-# Real-Time Fraud Detection System (v3)
-This repository contains the source code for a next-generation, real-time, and explainable fraud detection pipeline built for scalability, low-latency, and production-readiness.
+# 🛡️ Real-Time Fraud Detection System (End-to-End MLOps)
 
-## 1. Problem Statement
-Traditional fraud detection systems often run in batch, identifying fraud after it has occurred. This is insufficient for modern financial systems. A robust solution must:
+A scalable, event-driven machine learning pipeline that detects fraudulent credit card transactions in real-time.
 
-1. **Detect fraud in real-time** (sub-second) to prevent malicious transactions from ever completing
-
-2. **Scale to millions** of transactions per second during peak loads without performance degradation
-
-3. **Being explainable** this should provide clear explaination for the customers and auditors for declined transactions
-
-This project builds an end-to-end system the solves these challenges, Evloving from a professional pipeline (v3.0) to a full-scale distributed streaming application (v3.1) with production grade MLOps (v3.2).
-
-## 2. Tech Stack Overview
-
-| Category | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Core ML** | Python 3.10 | Base language for all services and modeling. |
-| | XGBoost | High-performance gradient-boosted model for superior accuracy. |
-| | scikit-learn | Data preprocessing, pipelines, and model evaluation. |
-| | SHAP | Model explainability (XAI) to understand predictions. |
-| **MLOps & Serving** | MLflow | Experiment tracking, model registry, and artifact management. |
-| | FastAPI | High-performance, asynchronous API for serving the ML model. |
-| **Streaming (v3.1)** | Apache Kafka | Real-time, distributed event streaming bus. |
-| | Apache Flink | Stateful stream processing for real-time feature engineering. |
-| | Redis | In-memory online feature store for millisecond-latency lookups. |
-| **Dependency Mgmt** | Poetry | Deterministic dependency management and virtual environment handling |
-| **DevOps (v3.1/3.2)** | Docker | Containerization of all microservices for portability. |
-| | Docker Compose | Local orchestration of the entire multi-service stack. |
-| | GitHub Actions | CI/CD automation for testing and code quality checks. |
-| **Monitoring (v3.2)** | PostgreSQL | Database for logging all transaction predictions. |
-| | Streamlit | Interactive dashboard for monitoring model drift. |
-
-## 3. Project Roadmap & Detailed Tasks
-
-**v3.0 The Advanced, Explainable ML Pipeline (Current Focus)**
-
-Goal: Create the intelligent core of our system. Success means having a high-performing model that is not a "black box," but is trackable, servable, and explainable.
-
--   **Phase 1: Project Foundation & Setup**
-    - [✔️] **Initialize Git repository**: Run `git init` and create a `.gitignore` file 
-    - [✔️] **Initialize Poetry**: Run `poetry init` to create `pyproject.toml` for deterministic dependency management
-    - [] **Install and Lock Dependency**: Use `poetry add xgboost mlflow fastapi uvicorn shap scikit-learn pandas` to manage versions correctly via `poetry.lock`
-    - [✔️] **Establish core project structure**: Create `src/`, `data/`, `notebooks/` directories
-
-- **Phase 2: Advanced Modeling & Experiment Tracking**
-    - [✔️] **Develop a reproducible training script**: Create `src/train.py` for data loading and XGBoost training
-    - [✔️] **Integrate MLflow**: Use `mlflow.start_run()` to log params, metrics (Precision/Recall), and artifacts
-    - [✔️] **Validate experiment tracking**: Confirm runs are viewable via `mlflow ui` (run via `poetry run mlflow ui`)
-- **Phase 3: Model Serving via API**
-    - [✔️] **Build a FastAPI service**: Create `src/inference_service/main.py`
-    - [] **Load production model**: Implement logic to pull the latest model from the MLflow Model Registry
-    - [✔️] **Create /predict endpoint**: Accept transaction JSON and return a fraud score
-- **Phase 4: Model Explainability (XAI)**
-    - [✔️] **Log SHAP explainer**: In `train.py`, log a `shap.TreeExplainer` as an MLflow artifact
-    - [✔️] **Create `/explain` endpoint**: Provide feature contribution analysis for any given transaction
-
-**v3.1: The Real-Time Streaming Architecture**
-
-**Goal**: Re-architect for a live data system capable of handling massive scale.
-
-- **Phase 1: Containerization & Orchestration**
-    - [] Write a `Dockerfile` for the FastAPI service using Poetry for multi-stage builds
-    - [] Create `docker-compose.yml` with `Kafka`, `Zookeeper`, and `Redis`
-- **Phase 2: Real-Time Data Ingestion**
-    - [] Build a `Transaction Ingestor` service to publish data to a Kafka topic
-    - [] Dockerize the ingestor service
-- **Phase 3: Stateful Stream Processing**
-    - [] Build a `Feature Engine` using Apache Flink to consume from Kafka
-    - [] Implement real-time feature logic using Redis for state storage
-    - [] Publish "enriched" transactions to an `enriched_transactions` Kafka topic
-- **Phase 4: Final Inferencing Pipeline**
-    - [] Create an `Inference Consumer` to subscribe to enriched data
-    - [] Trigger model scoring via the FastAPI `/predict` endpoint
+Built with **Kafka** for streaming, **FastAPI** for inference, **Redis** for caching, **PostgreSQL** for persistence, and **Docker** for containerization.
 
 ---
-Phase 5: Observability & Interaction.
 
-Here is the roadmap for this phase. We will add three distinct layers to your current setup:
+## 🚀 Quick Start
 
-1. The "Routine" (Automated Health/Smoke Test)
-You asked: "Where this check can happen when the server goes online?"
+### Prerequisites
+* **Docker Desktop** (Running)
+* **Python 3.9+** (For running client scripts locally)
+* **Make** (Optional, for shortcut commands)
 
-This is best implemented as a "Smoke Test Script".
+### 1. Start the Infrastructure
+This command spins up Zookeeper, Kafka, Redis, Postgres, MLflow, and the Inference API.
+```bash
+make up
+# OR: docker-compose up -d --build
+```
+Wait ~30 seconds for all services to initialize.
 
-What it is: A Python script (check_system.py) that runs outside the containers (or in a temporary container).
+2. Install Local Dependencies
+To run the data generator (producer) and processor (consumer) locally:
 
-When it runs: Immediately after you run docker-compose up.
+```Bash
+pip install confluent-kafka requests
+```
 
-What it checks:
+3. Run the Pipeline
+Open two separate terminal windows:
 
-MLflow: Is the server responding on port 5000?
+Terminal A: The Consumer (The Processor) Listens for transactions and detects fraud.
 
-Inference: Is the API responding on port 8000?
+```bash
+make consumer
+# OR: python src/consumer.py
+```
 
-Model Availability: Can the API actually load the model?
+4. Verify Results
+Check the PostgreSQL database to confirm transactions are being saved:
 
-End-to-End: If we send a dummy transaction, do we get a prediction (0 or 1) back?
+```bash
+make check-db
+```
 
-2. The User Interface (Streamlit)
-We will add a simple, friendly website where you (or a fraud analyst) can:
+🏗️ Architecture
+The system follows a Producer-Consumer microservices pattern:
 
-Manually enter transaction details (using sliders/inputs).
+1. Ingestion: The producer.py script mimics a POS terminal, pushing transactions to a Kafka Topic (transaction_stream).
 
-Click "Detect Fraud."
+2. Processing: The consumer.py service subscribes to the topic. It acts as a bridge, forwarding data to the Inference API.
 
-See the probability score visually.
+3. Inference: The FastAPI service (inference-service):
 
-Bonus: See a "System Status" light (Green/Red) powered by your health check.
+-  Checks Redis to see if this transaction was already processed (Deduplication/Caching).
 
-3. Monitoring (Prometheus & Grafana)
-This is for the "heartbeat" of the system over time.
+-  If new, it loads the model (from MLflow) and predicts fraud probability.
 
-Prometheus: Silently records metrics (e.g., "Inference API took 0.1s", "50 requests per minute").
+-  Saves the result to PostgreSQL for audit/analytics.
 
-Grafana: A dashboard with graphs showing traffic spikes or errors.
----
+4. Storage:
 
-**v3.2: The MLOps & Production Polish**
+- Redis: TTL-based cache for low-latency lookups.
 
-**Goal**: Implement professional monitoring and automation
+- PostgreSQL: Permanent storage for all prediction logs.
 
-- **Phase 1: CI/CD Automation**
-    - [] Set up GitHub Actions for automated linting (`black`/`flake8`) using `poetry run`
-    - [] Integrate `pytest` into the CI pipeline via `poetry run pytest`
-- **Phase 2: Model Monitoring & Observability**
-    - [] Deploy `PostgreSQL` to log all production predictions
-    - [] Build a `Streamlit` dashboard to visualize Data Drift and Concept Drift
-- **Phase 3: Final Documentation**
-    - [] Create a comprehensive architecture diagram
-    - [] Write detailed API documentation and ensure professional docstrings throughout
+
+🛠️ Tech Stack
+
+Component,Technology,Purpose
+Streaming,Apache Kafka,High-throughput event buffering & decoupling.
+API,FastAPI,High-performance async REST API for model inference.
+Model Serving,MLflow,Model versioning and artifact management.
+Caching,Redis,Low-latency deduplication (prevents re-computing known transactions).
+Database,PostgreSQL,Persistent storage for fraud logs and analytics.
+Containerization,Docker & Compose,Reproducible environment management.
+
+📂 Project Structure
+
+Plaintext
+├── src/
+│   ├── app.py             # FastAPI Application (The Brain)
+│   ├── producer.py        # Fake Transaction Generator
+│   ├── consumer.py        # Kafka Listener
+│   ├── database.py        # Postgres Connection Logic
+│   ├── train_in_docker.py # Script to retrain model inside container
+│   └── ...
+├── models/                # Local model storage
+├── docker-compose.yml     # Infrastructure orchestration
+├── Dockerfile             # API Container definition
+├── Makefile               # Shortcut commands
+└── README.md              # Documentation
+
+
+🧠 Key Design Decisions
+Why Kafka?
+Instead of a direct HTTP call from the credit card terminal to the API, we use Kafka to decouple the systems. This ensures that if the API goes down, transactions aren't lost—they are buffered in the queue until the system recovers.
+
+Why Redis?
+Fraud detection requires speed. We use Redis as a "Look-aside Cache." If a transaction ID is seen twice (e.g., a retry), we return the cached result in <1ms instead of running the heavy ML model again.
+
+Why Train in Docker?
+To avoid "it works on my machine" errors. The training script runs inside the same Linux environment as the API, ensuring joblib and pickle binary compatibility for libraries like XGBoost/Scikit-Learn.

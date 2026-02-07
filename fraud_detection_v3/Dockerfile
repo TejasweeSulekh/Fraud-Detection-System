@@ -16,6 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -28,6 +29,8 @@ COPY pyproject.toml poetry.lock ./
 # --no-root: Do not install the project itself yet, just libs
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root
+
+RUN pip install psycopg2-binary sqlalchemy
 
 # Copy the source code
 COPY src/ ./src/

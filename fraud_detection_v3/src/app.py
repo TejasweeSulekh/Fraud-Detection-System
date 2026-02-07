@@ -9,6 +9,7 @@ import redis
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
+from src.database import init_db, log_prediction
 
 # --- CONFIGURATION ---
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -54,6 +55,8 @@ class Transaction(BaseModel):
 def load_artifacts():
     global model_pipeline, explainer, feature_names, redis_client
     
+    
+    init_db()
     # 1. Setup Redis Connection
     try:
         redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
@@ -91,6 +94,7 @@ def load_artifacts():
                 time.sleep(5)
             else:
                 print("❌ CRITICAL: Could not load model.")
+                
 
 # --- ENDPOINTS ---
 
@@ -137,6 +141,7 @@ def predict_batch(transactions: List[Transaction]):
 
         # --- PHASE 2: INFERENCE (Only for misses) ---
         if txs_to_compute:
+            start_time = time.time()
             # Convert ONLY the needed transactions to DataFrame
             # exclude transaction_id for model input
             data_dicts = [t.dict(exclude={'transaction_id'}) for t in txs_to_compute]
@@ -145,9 +150,12 @@ def predict_batch(transactions: List[Transaction]):
             preds = model_pipeline.predict(df)
             probs = model_pipeline.predict_proba(df)[:, 1]
             
+            inference_time = (time.time() - start_time) * 1000 # ms
+            
             # --- PHASE 3: CACHE WRITE-BACK ---
             for j, (pred, prob) in enumerate(zip(preds, probs)):
                 original_index = indices_to_compute[j]
+                tx_obj = txs_to_compute[j]
                 tx_id = txs_to_compute[j].transaction_id
                 
                 result = {
@@ -165,6 +173,14 @@ def predict_batch(transactions: List[Transaction]):
                         time=3600, 
                         value=json.dumps(result)
                     )
+                
+                log_prediction(
+                    transaction_id=tx_id,
+                    amount=tx_obj.Amount,
+                    is_fraud=bool(pred),
+                    prob=float(prob),
+                    latency=inference_time
+                )
                 
                 results_map[original_index] = result
 

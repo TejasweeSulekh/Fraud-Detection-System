@@ -94,6 +94,9 @@ services:
     networks:
       - fraud-network
 
+volumes:
+  postgres_data:
+
 networks:
   fraud-network:
     driver: bridge
