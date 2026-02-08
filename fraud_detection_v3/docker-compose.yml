@@ -1,0 +1,171 @@
+version: '3.8'
+
+services:
+  # ... (init-model stays the same) ...
+  init-model:
+    build: .
+    container_name: fraud-init-model
+    command: python src/train_in_docker.py
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    volumes:
+      - ./src:/app/src
+      - ./mlruns:/app/mlruns
+      - ./data:/app/data
+    depends_on:
+      - mlflow-server
+    networks:
+      - fraud-network
+
+  inference-service:
+    build: .
+    container_name: fraud-inference-service
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - DATABASE_URL=postgresql://fraud_user:fraud_pass@postgres:5432/fraud_db
+    volumes:
+      - ./src:/app/src
+      - ./mlruns:/app/mlruns
+      - ./data:/app/data
+    depends_on:
+      init-model:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+      postgres:
+        condition: service_started
+    networks:
+      - fraud-network
+
+  consumer:
+    build: .
+    container_name: fraud-consumer
+    command: python src/consumer.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - INFERENCE_API_URL=http://inference-service:8000/predict
+    depends_on:
+      kafka:
+        condition: service_started
+      inference-service:
+        condition: service_started
+    networks:
+      - fraud-network
+
+  producer:
+    build: .
+    container_name: fraud-producer
+    command: python src/producer.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    depends_on:
+      kafka:
+        condition: service_started
+    networks:
+      - fraud-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_db
+    environment:
+      POSTGRES_USER: fraud_user
+      POSTGRES_PASSWORD: fraud_pass
+      POSTGRES_DB: fraud_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fraud-network
+
+  mlflow-server:
+    image: python:3.12-slim
+    container_name: mlflow-server
+    working_dir: /app
+    ports:
+      - "5000:5000"
+    command: >
+      sh -c "pip install mlflow==2.14.1 setuptools && 
+      mlflow server 
+      --backend-store-uri sqlite:///mlflow.db 
+      --default-artifact-root /app/mlruns 
+      --host 0.0.0.0 
+      --port 5000"
+    volumes:
+      - ./mlruns:/app/mlruns
+      - ./mlflow_store:/app/backend_store
+      # - ./mlflow.db:/app/mlflow.db
+    networks:
+      - fraud-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - fraud-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - fraud-network
+
+  # --- 5. DASHBOARD SERVICE ---
+  dashboard:
+    build: .
+    container_name: fraud-dashboard
+    # Streamlit runs on port 8501 by default
+    command: streamlit run src/dashboard.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      # Access database to read logs
+      - DATABASE_URL=postgresql://fraud_user:fraud_pass@postgres:5432/fraud_db
+      # Access API to ask for explanations
+      # Note: We use the internal docker name 'inference-service'
+      - API_URL=http://fraud-inference-service:8000
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      inference-service:
+        condition: service_started
+      postgres:
+        condition: service_started
+    networks:
+      - fraud-network
+
+  redis:
+    image: redis:7.2-bookworm
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fraud-network
+
+volumes:
+  postgres_data:
+
+networks:
+  fraud-network:
+    driver: bridge
