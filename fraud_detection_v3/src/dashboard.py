@@ -13,8 +13,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(
 logger = logging.getLogger("Dashboard")
 
 # --- CONFIGURATION ---
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://fraud_user:fraud_pass@localhost:5432/fraud_db")
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://fraud_user:fraud_pass@postgres:5432/fraud_db")
+# Docker DNS: use 'inference-service', not localhost
+API_URL = os.getenv("API_URL", "http://inference-service:8000")
 
 st.set_page_config(
     page_title="Fraud Detection Monitor",
@@ -42,25 +43,53 @@ def get_explanation(transaction_data):
         if isinstance(transaction_data, str):
             transaction_data = json.loads(transaction_data)
             
-        logger.info("Requesting explanation from API...")
-        resp = requests.post(f"{API_URL}/explain", json=transaction_data)
+        # logger.info("Requesting explanation from API...")
+        resp = requests.post(f"{API_URL}/explain", json=transaction_data, timeout=3)
         
         if resp.status_code == 200:
             return resp.json()
         else:
-            logger.error(f"API Explanation Failed: {resp.text}")
             return {"error": resp.text}
     except Exception as e:
-        logger.error(f"Explanation request failed: {e}")
         return {"error": str(e)}
+
+def render_explanation(row):
+    """Renders the SHAP plot for a given row of data"""
+    with st.spinner("Analyzing Model Decision..."):
+        input_data_raw = row['input_data']
+        
+        if input_data_raw:
+            explanation = get_explanation(input_data_raw)
+            
+            if "top_contributing_features" in explanation:
+                feats = explanation['top_contributing_features']
+                feat_df = pd.DataFrame(list(feats.items()), columns=['Feature', 'Impact'])
+                
+                fig = px.bar(
+                    feat_df, 
+                    x='Impact', 
+                    y='Feature', 
+                    orientation='h',
+                    title=f"Why was {row['transaction_id'][:8]}... flagged?",
+                    color='Impact',
+                    color_continuous_scale='RdBu_r'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.error(f"Failed to explain: {explanation}")
+        else:
+            st.warning("No input data stored for this transaction.")
 
 # --- UI LAYOUT ---
 st.title("Real-Time Fraud Detection System")
 
 # SIDEBAR CONTROLS
 st.sidebar.header("Controls")
-auto_refresh = st.sidebar.checkbox("Enable Live Updates", value=True)
-st.sidebar.info("Uncheck 'Enable Live Updates' to pause the feed and investigate specific transactions without the screen refreshing.")
+# Using session state to ensure the checkbox doesn't flicker
+if 'auto_refresh' not in st.session_state:
+    st.session_state.auto_refresh = True
+
+auto_refresh = st.sidebar.checkbox("Enable Live Updates", value=st.session_state.auto_refresh)
 
 # 1. Metrics Row
 col1, col2, col3, col4 = st.columns(4)
@@ -86,70 +115,60 @@ if not df.empty:
     display_df = df[['transaction_id', 'timestamp', 'amount', 'is_fraud', 'fraud_probability']]
     st.dataframe(
         display_df.style.apply(highlight_fraud, axis=1), 
-        use_container_width=True
+        use_container_width=True,
+        height=300
     )
 
-    # 3. Investigation & Explainability
+    # 3. Dynamic Explanation Section
     st.markdown("---")
-    st.subheader("Investigator Mode")
-    
-    tx_ids = df['transaction_id'].tolist()
-    
-    # If we are live updating, picking a transaction is hard because the list shifts.
-    # The pause button solves this.
-    selected_tx_id = st.selectbox("Select Transaction ID to Investigate:", tx_ids)
+    st.subheader("Model Decision Explainer")
 
-    if selected_tx_id:
-        row = df[df['transaction_id'] == selected_tx_id].iloc[0]
+    c1, c2 = st.columns([1, 2])
+
+    with c1:
+        # LOGIC SPLIT: LIVE vs PAUSED
+        target_row = None
         
-        c1, c2 = st.columns([1, 2])
-        
-        with c1:
-            st.info(f"**Status:** {'FRAUD' if row['is_fraud'] else 'LEGIT'}")
-            st.write(f"**Amount:** ${row['amount']:.2f}")
-            st.write(f"**Risk Score:** {row['fraud_probability']:.4f}")
+        if auto_refresh:
+            st.info("🔴 LIVE MODE: Updates automatically show the latest transaction.")
+            # Use a toggle instead of a button
+            show_live_shap = st.toggle("Explain Stream (Latest Transaction)", value=False)
             
-            # We use a unique key for the button so it doesn't reset weirdly
-            if st.button("Explain Decision", key="explain_btn"):
-                with st.spinner("Asking AI Model..."):
-                    input_data_raw = row['input_data']
-                    
-                    if input_data_raw:
-                        explanation = get_explanation(input_data_raw)
-                        
-                        if "top_contributing_features" in explanation:
-                            st.success("Explanation Generated!")
-                            feats = explanation['top_contributing_features']
-                            feat_df = pd.DataFrame(list(feats.items()), columns=['Feature', 'Impact'])
-                            
-                            # Using Plotly for the chart
-                            fig = px.bar(
-                                feat_df, 
-                                x='Impact', 
-                                y='Feature', 
-                                orientation='h',
-                                title="Why was this flagged? (SHAP Values)",
-                                color='Impact',
-                                color_continuous_scale='RdBu_r'
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.error(f"Failed to explain: {explanation}")
-                    else:
-                        st.warning("No input data stored for this transaction.")
+            if show_live_shap:
+                # In live mode, we always grab the top row (index 0)
+                target_row = df.iloc[0]
+                
+        else:
+            st.info("⏸️ INVESTIGATION MODE: Feed paused. Select specific ID.")
+            tx_ids = df['transaction_id'].tolist()
+            selected_tx_id = st.selectbox("Select Transaction ID:", tx_ids)
+            
+            # In paused mode, we find the specific row selected
+            if selected_tx_id:
+                target_row = df[df['transaction_id'] == selected_tx_id].iloc[0]
 
-        with c2:
-            st.write("### Raw Transaction Data")
-            try:
-                json_data = json.loads(row['input_data']) if isinstance(row['input_data'], str) else row['input_data']
-                st.json(json_data)
-            except:
-                st.text(row['input_data'])
+        # Display details if a row is targeted
+        if target_row is not None:
+            st.write(f"**Transaction:** `{target_row['transaction_id']}`")
+            st.write(f"**Amount:** `${target_row['amount']:.2f}`")
+            st.write(f"**Risk Score:** `{target_row['fraud_probability']:.4f}`")
+            
+            status_color = "red" if target_row['is_fraud'] else "green"
+            st.markdown(f"**Status:** :{status_color}[{'FRAUD' if target_row['is_fraud'] else 'LEGIT'}]")
+
+    with c2:
+        if target_row is not None:
+            # If we are in Live Mode with toggle ON, or Paused Mode with a selection
+            if auto_refresh and show_live_shap:
+                render_explanation(target_row)
+            elif not auto_refresh:
+                # In paused mode, always render (or you can add a toggle here too if you want)
+                render_explanation(target_row)
+        else:
+            st.info("Select a transaction or enable 'Explain Stream' to see details.")
 
 else:
     st.info("Waiting for transactions... (Check if Producer is running)")
-    if st.button("Refresh"):
-        st.rerun()
 
 # --- AUTO REFRESH LOGIC ---
 if auto_refresh:
