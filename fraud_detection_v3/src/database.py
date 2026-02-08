@@ -22,7 +22,7 @@ class PredictionLog(Base):
     amount = Column(Float)
     is_fraud = Column(Boolean)
     fraud_probability = Column(Float)
-    execution_time_ms = Column(Float, nullable=True) # Optional: track latency
+    execution_time_ms = Column(Float, nullable=True) 
     timestamp = Column(DateTime, default=datetime.utcnow)
     input_data = Column(String, nullable=True)
 
@@ -30,9 +30,9 @@ class PredictionLog(Base):
 def init_db():
     try:
         Base.metadata.create_all(bind=engine)
-        print("✅ Database tables created successfully.")
+        print("[INFO] Database tables created successfully.")
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+        print(f"[ERROR] Database connection failed: {e}")
 
 # 5. Helper to save data
 def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_data = None):
@@ -49,7 +49,7 @@ def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_da
         session.add(record)
         session.commit()
     except Exception as e:
-        print(f"⚠️ Failed to log to DB: {e}")
+        print(f"[WARN] Failed to log to DB: {e}")
         session.rollback()
     finally:
         session.close()
