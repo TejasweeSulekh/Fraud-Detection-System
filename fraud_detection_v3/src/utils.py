@@ -11,12 +11,17 @@ logger = logging.getLogger(__name__)
 
 def download_file_from_google_drive(id, destination):
     URL = "https://docs.google.com/uc/export"
-    params = {'id': id, 'confirm': 't'}
     
     session = requests.Session()
-    response = session.get(URL, params=params, stream=True)
+    response = session.get(URL, params={'id': id}, stream=True)
     
-    save_response_content(response, destination)    
+    token = get_confirm_token(response)
+
+    if token:
+        params = {'id': id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    save_response_content(response, destination)   
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():

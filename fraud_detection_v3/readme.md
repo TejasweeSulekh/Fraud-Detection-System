@@ -1,105 +1,91 @@
-# 🛡️ Real-Time Fraud Detection System (End-to-End MLOps)
+# 🛡️ Real-Time Fraud Detection System (v3.1)
 
-A scalable, event-driven machine learning pipeline that detects fraudulent credit card transactions in real-time.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Docker](https://img.shields.io/badge/Docker-Compose-orange)
+![MLflow](https://img.shields.io/badge/MLOps-MLflow-blueviolet)
+![Kafka](https://img.shields.io/badge/Streaming-Kafka-black)
 
-Built with **Kafka** for streaming, **FastAPI** for inference, **Redis** for caching, **PostgreSQL** for persistence, and **Docker** for containerization.
+A complete, containerized MLOps pipeline for detecting fraudulent credit card transactions in real-time. This system simulates a production environment with event streaming, distributed caching, model versioning, and an explainable AI (XAI) dashboard.
 
----
+## 🚀 Key Features
 
-## 🚀 Quick Start
+* **Real-Time Inference:** sub-50ms latency using **FastAPI** and **Redis** caching.
+* **Event Streaming:** Decoupled architecture using **Apache Kafka** for high-throughput transaction processing.
+* **Automated MLOps:** Self-healing training pipeline that automatically retrains and versions models using **MLflow**.
+* **Explainable AI (XAI):** Integrated **SHAP** (SHapley Additive exPlanations) to provide "Why" behind every fraud alert.
+* **Live Monitoring:** Interactive **Streamlit** dashboard for visualizing fraud trends and investigating alerts.
+
+## 🏗️ Architecture
+
+The system is composed of 6 microservices orchestrated via Docker Compose:
+
+1.  **Producer:** Simulates a stream of credit card transactions (Legit & Fraud).
+2.  **Kafka:** Buffers transactions for asynchronous processing.
+3.  **Consumer:** Reads from Kafka, sends data to the Inference API.
+4.  **Inference API:** The brain. Loads the model from MLflow, checks Redis cache, predicts fraud, and logs to Postgres.
+5.  **Dashboard:** A UI for analysts to monitor traffic and audit suspicious transactions.
+6.  **MLflow & Postgres:** Backend for model registry and persistent data storage.
+
+## 🛠️ Tech Stack
+
+* **Language:** Python 3.12
+* **ML Frameworks:** Scikit-Learn, SHAP, MLflow
+* **Streaming:** Confluent Kafka, Zookeeper
+* **Web/API:** FastAPI, Streamlit
+* **Database/Cache:** PostgreSQL, Redis
+* **Infrastructure:** Docker, Docker Compose
+
+## ⚡ Quick Start
+
+You can spin up the entire system with a single command. No local Python environment is required.
 
 ### Prerequisites
-* **Docker Desktop** (Running)
-* **Python 3.9+** (For running client scripts locally)
-* **Make** (Optional, for shortcut commands)
+* Docker Desktop installed and running.
 
-### 1. Start the Infrastructure
-This command spins up Zookeeper, Kafka, Redis, Postgres, MLflow, and the Inference API.
-```bash
-make up
-# OR: docker-compose up -d --build
-```
-Wait ~30 seconds for all services to initialize.
+### Installation
 
-2. Install Local Dependencies
-To run the data generator (producer) and processor (consumer) locally:
+1.  **Clone the repository**
+    ```bash
+    git clone Fraud-Detection-System
+    cd ./Fraud-Detection-System/fraud_detection_v3
+    ```
 
-```Bash
-pip install confluent-kafka requests
-```
+2.  **Launch the System**
+    ```bash
+    docker-compose up --build
+    ```
+    *Note: The first run may take a few minutes as it downloads the dataset and trains the initial model.*
 
-3. Run the Pipeline
-Open two separate terminal windows:
+3. **What Happens**
 
-Terminal A: The Consumer (The Processor) Listens for transactions and detects fraud.
+    * **mlflow-server** starts.
 
-```bash
-make consumer
-# OR: python src/consumer.py
-```
+    * **init-model** will stay in "Created" state and wait until mlflow-server is healthy (responding to curl).
 
-4. Verify Results
-Check the PostgreSQL database to confirm transactions are being saved:
+    * Once MLflow is green, init-model runs train_in_docker.py.
 
-```bash
-make check-db
-```
+    * **train_in_docker.py** will now successfully download the data (using the fixed utils.py) and log the model.
 
-🏗️ Architecture
-The system follows a Producer-Consumer microservices pattern:
+    * Once init-model finishes (exits with code 0), inference-service will start.
 
-1. Ingestion: The producer.py script mimics a POS terminal, pushing transactions to a Kafka Topic (transaction_stream).
+    * The rest of the system spins up.
 
-2. Processing: The consumer.py service subscribes to the topic. It acts as a bridge, forwarding data to the Inference API.
+4.  **Access the Services**
+    * **Dashboard:** [http://localhost:8501](http://localhost:8501) 
+    * **MLflow UI:** [http://localhost:5000](http://localhost:5000)
+    * **API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 
-3. Inference: The FastAPI service (inference-service):
+## 📂 Project Structure
 
--  Checks Redis to see if this transaction was already processed (Deduplication/Caching).
-
--  If new, it loads the model (from MLflow) and predicts fraud probability.
-
--  Saves the result to PostgreSQL for audit/analytics.
-
-4. Storage:
-
-- Redis: TTL-based cache for low-latency lookups.
-
-- PostgreSQL: Permanent storage for all prediction logs.
-
-
-🛠️ Tech Stack
-
-Component,Technology,Purpose
-Streaming,Apache Kafka,High-throughput event buffering & decoupling.
-API,FastAPI,High-performance async REST API for model inference.
-Model Serving,MLflow,Model versioning and artifact management.
-Caching,Redis,Low-latency deduplication (prevents re-computing known transactions).
-Database,PostgreSQL,Persistent storage for fraud logs and analytics.
-Containerization,Docker & Compose,Reproducible environment management.
-
-📂 Project Structure
-
-Plaintext
-├── src/
-│   ├── app.py             # FastAPI Application (The Brain)
-│   ├── producer.py        # Fake Transaction Generator
-│   ├── consumer.py        # Kafka Listener
-│   ├── database.py        # Postgres Connection Logic
-│   ├── train_in_docker.py # Script to retrain model inside container
+```text
+├── data/               # Local data storage (mounted volume)
+├── mlruns/             # MLflow artifact storage
+├── src/                # Source code for all microservices
+│   ├── app.py          # FastAPI Inference Service
+│   ├── consumer.py     # Kafka Consumer logic
+│   ├── dashboard.py    # Streamlit Dashboard
+│   ├── train_in_docker.py # Automated Training Script
 │   └── ...
-├── models/                # Local model storage
-├── docker-compose.yml     # Infrastructure orchestration
-├── Dockerfile             # API Container definition
-├── Makefile               # Shortcut commands
-└── README.md              # Documentation
+├── docker-compose.yml  # Orchestration config
+└── Dockerfile          # Unified container definition
 
-
-🧠 Key Design Decisions
-Why Kafka?
-Instead of a direct HTTP call from the credit card terminal to the API, we use Kafka to decouple the systems. This ensures that if the API goes down, transactions aren't lost—they are buffered in the queue until the system recovers.
-
-Why Redis?
-Fraud detection requires speed. We use Redis as a "Look-aside Cache." If a transaction ID is seen twice (e.g., a retry), we return the cached result in <1ms instead of running the heavy ML model again.
-
-Why Train in Docker?
-To avoid "it works on my machine" errors. The training script runs inside the same Linux environment as the API, ensuring joblib and pickle binary compatibility for libraries like XGBoost/Scikit-Learn.

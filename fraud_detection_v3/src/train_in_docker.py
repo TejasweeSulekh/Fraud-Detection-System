@@ -20,7 +20,7 @@ DATA_DIR = "data"
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("Trainer")
 
-def wait_for_mlflow(uri, max_retries=30, delay=2):
+def wait_for_mlflow(uri, max_retries=600, delay=1):
     """Waits for MLflow server to be ready before proceeding."""
     logger.info(f"Waiting for MLflow at {uri}...")
     for i in range(max_retries):

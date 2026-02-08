@@ -1,22 +1,54 @@
 version: '3.8'
 
 services:
-  # ... (init-model stays the same) ...
+  # --- 1. ML FLOW SERVER (The Backbone) ---
+  mlflow-server:
+      build:
+        context: .
+        dockerfile: Dockerfile.mlflow
+      container_name: mlflow-server
+      ports:
+        - "5000:5000"
+      environment:
+        - MLFLOW_TRACKING_URI=http://localhost:5000
+      volumes:
+        - ./mlruns:/app/mlruns                
+        - ./mlflow_store:/app/backend_store    
+      command: >
+        mlflow server
+        --backend-store-uri sqlite:////app/backend_store/mlflow.db
+        --default-artifact-root /app/mlruns
+        --host 0.0.0.0
+        --port 5000
+      networks:
+        - fraud-network
+      restart: always
+      # ADD THIS HEALTHCHECK
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  # --- 2. MODEL TRAINING (Runs once then dies) ---
   init-model:
     build: .
     container_name: fraud-init-model
     command: python src/train_in_docker.py
     environment:
+      # MUST point to the container name, not localhost
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     volumes:
       - ./src:/app/src
       - ./mlruns:/app/mlruns
       - ./data:/app/data
     depends_on:
-      - mlflow-server
+      mlflow-server:
+        condition: service_healthy  # WAITS FOR MLFLOW TO BE READY
     networks:
       - fraud-network
 
+  # --- 3. INFERENCE API ---
   inference-service:
     build: .
     container_name: fraud-inference-service
@@ -34,7 +66,7 @@ services:
       - ./data:/app/data
     depends_on:
       init-model:
-        condition: service_completed_successfully
+        condition: service_completed_successfully # WAITS FOR TRAINING TO FINISH
       redis:
         condition: service_started
       kafka:
@@ -44,12 +76,14 @@ services:
     networks:
       - fraud-network
 
+  # --- 4. CONSUMER ---
   consumer:
     build: .
     container_name: fraud-consumer
     command: python src/consumer.py
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      # Fix: Use correct container name
       - INFERENCE_API_URL=http://inference-service:8000/predict
     depends_on:
       kafka:
@@ -59,6 +93,7 @@ services:
     networks:
       - fraud-network
 
+  # --- 5. PRODUCER ---
   producer:
     build: .
     container_name: fraud-producer
@@ -71,6 +106,7 @@ services:
     networks:
       - fraud-network
 
+  # --- 6. INFRASTRUCTURE ---
   postgres:
     image: postgres:15-alpine
     container_name: postgres_db
@@ -84,26 +120,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - fraud-network
-
-  mlflow-server:
-    image: python:3.12-slim
-    container_name: mlflow-server
-    working_dir: /app
-    ports:
-      - "5000:5000"
-    command: >
-      sh -c "pip install mlflow==2.14.1 setuptools && 
-      mlflow server 
-      --backend-store-uri sqlite:///mlflow.db 
-      --default-artifact-root /app/mlruns 
-      --host 0.0.0.0 
-      --port 5000"
-    volumes:
-      - ./mlruns:/app/mlruns
-      - ./mlflow_store:/app/backend_store
-      # - ./mlflow.db:/app/mlflow.db
-    networks:
-      - fraud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud_user -d fraud_db"]
+      interval: 5s
+      retries: 5
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -130,28 +150,30 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
       - fraud-network
+    healthcheck:
+      test: nc -z localhost 9092 || exit -1
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # --- 5. DASHBOARD SERVICE ---
+  # --- 7. DASHBOARD ---
   dashboard:
     build: .
     container_name: fraud-dashboard
-    # Streamlit runs on port 8501 by default
     command: streamlit run src/dashboard.py --server.port 8501 --server.address 0.0.0.0
     ports:
       - "8501:8501"
     environment:
-      # Access database to read logs
       - DATABASE_URL=postgresql://fraud_user:fraud_pass@postgres:5432/fraud_db
-      # Access API to ask for explanations
-      # Note: We use the internal docker name 'inference-service'
-      - API_URL=http://fraud-inference-service:8000
+      # Fix: Use correct service name
+      - API_URL=http://inference-service:8000
     volumes:
       - ./src:/app/src
     depends_on:
       inference-service:
         condition: service_started
       postgres:
-        condition: service_started
+        condition: service_healthy
     networks:
       - fraud-network
 
