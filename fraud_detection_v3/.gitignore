@@ -19,6 +19,9 @@ ENV/
 .ipynb_checkpoints
 
 # --- PROJECT SPECIFIC ---
+# Trying to remove __pycache__ from being committed
+src/__pycache__
+
 
 # 1. Ignore the Dataset (The downloader handles this)
 data/creditcard.csv
