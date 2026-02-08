@@ -6,10 +6,15 @@ import mlflow
 import mlflow.sklearn
 import shap
 import redis
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List
 from src.database import init_db, log_prediction
+
+# --- LOGGING SETUP ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+logger = logging.getLogger("API")
 
 # --- CONFIGURATION ---
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -17,14 +22,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 MODEL_NAME = "FraudDetectionSOTA"
-MODEL_STAGE = "Production"
 
-# Initialize App
-app = FastAPI(
-    title="Fraud Detection System V3.1", 
-    description="Real-time inference with Redis Caching and XGBoost",
-    version="3.1"
-)
+app = FastAPI(title="Fraud Detection System V3.1")
 
 # --- GLOBAL STATE ---
 model_pipeline = None
@@ -34,7 +33,7 @@ redis_client = None
 
 # --- DATA SCHEMA ---
 class Transaction(BaseModel):
-    transaction_id: str = Field(..., description="Unique ID for deduplication/caching")
+    transaction_id: str = Field(..., description="Unique ID for deduplication")
     Time: float
     V1: float; V2: float; V3: float; V4: float; V5: float
     V6: float; V7: float; V8: float; V9: float; V10: float
@@ -44,33 +43,31 @@ class Transaction(BaseModel):
     V26: float; V27: float; V28: float
     Amount: float
 
-# --- LIFECYCLE MANAGEMENT ---
-
+# --- LIFECYCLE ---
 @app.on_event("startup")
 def load_artifacts():
     global model_pipeline, explainer, feature_names, redis_client
     
     init_db()
     
-    # 1. Setup Redis Connection
+    # 1. Redis
     try:
         redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
         redis_client.ping()
-        print(f"[INFO] Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+        logger.info(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
     except Exception as e:
-        print(f"[WARN] Redis connection failed: {e}")
-        print("[WARN] System will continue without caching.")
+        logger.warning(f"Redis connection failed: {e}")
         redis_client = None
 
-    # 2. Setup MLflow & Model
+    # 2. MLflow
     mlflow.set_tracking_uri(MLFLOW_URI)
-    print(f"[INFO] Connecting to MLflow at {MLFLOW_URI}...")
+    logger.info(f"Connecting to MLflow at {MLFLOW_URI}...")
 
     max_retries = 7
     for attempt in range(max_retries):
         try:
             model_uri = f"models:/{MODEL_NAME}/latest" 
-            print(f"[INFO] Loading model from {model_uri} (Attempt {attempt+1})...")
+            logger.info(f"Loading model from {model_uri} (Attempt {attempt+1})...")
             
             model_pipeline = mlflow.sklearn.load_model(model_uri)
             
@@ -79,26 +76,20 @@ def load_artifacts():
             explainer = shap.TreeExplainer(classifier)
             feature_names = ['Time'] + [f'V{i}' for i in range(1, 29)] + ['Amount']
             
-            print("[INFO] Model and Explainer loaded successfully!")
+            logger.info("Model and Explainer loaded successfully!")
             return
             
         except Exception as e:
-            print(f"[WARN] Load failed: {e}")
+            logger.warning(f"Load failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(5)
             else:
-                print("[ERROR] CRITICAL: Could not load model.")
+                logger.error("CRITICAL: Could not load model.")
 
 # --- ENDPOINTS ---
-
 @app.get("/")
 def health_check():
-    return {
-        "status": "online",
-        "model_loaded": model_pipeline is not None,
-        "redis_connected": redis_client is not None,
-        "mlflow_uri": MLFLOW_URI
-    }
+    return {"status": "online", "model_loaded": model_pipeline is not None}
 
 @app.post("/predict")
 def predict_batch(transactions: List[Transaction]):
@@ -110,7 +101,7 @@ def predict_batch(transactions: List[Transaction]):
     txs_to_compute = []
 
     try:
-        # --- PHASE 1: CACHE LOOKUP ---
+        # PHASE 1: CACHE LOOKUP
         for i, tx in enumerate(transactions):
             cached_result = None
             if redis_client:
@@ -125,7 +116,7 @@ def predict_batch(transactions: List[Transaction]):
                 indices_to_compute.append(i)
                 txs_to_compute.append(tx)
 
-        # --- PHASE 2: INFERENCE (Only for misses) ---
+        # PHASE 2: INFERENCE
         if txs_to_compute:
             start_time = time.time()
             data_dicts = [t.dict(exclude={'transaction_id'}) for t in txs_to_compute]
@@ -133,74 +124,58 @@ def predict_batch(transactions: List[Transaction]):
             
             preds = model_pipeline.predict(df)
             probs = model_pipeline.predict_proba(df)[:, 1]
-            
             inference_time = (time.time() - start_time) * 1000 
             
-            # --- PHASE 3: CACHE WRITE-BACK ---
+            # PHASE 3: WRITE-BACK
             for j, (pred, prob) in enumerate(zip(preds, probs)):
                 original_index = indices_to_compute[j]
-                tx_obj = txs_to_compute[j]
                 tx_id = txs_to_compute[j].transaction_id
                 
                 result = {
                     "transaction_id": tx_id,
                     "is_fraud": bool(pred),
                     "fraud_probability": float(prob),
-                    "alert": float(prob) > 0.8,
                     "source": "model"
                 }
                 
                 if redis_client:
-                    redis_client.setex(
-                        name=f"pred:{tx_id}", 
-                        time=3600, 
-                        value=json.dumps(result)
-                    )
+                    redis_client.setex(f"pred:{tx_id}", 3600, json.dumps(result))
                 
                 log_prediction(
                     transaction_id=tx_id,
-                    amount=tx_obj.Amount,
+                    amount=txs_to_compute[j].Amount,
                     is_fraud=bool(pred),
                     prob=float(prob),
                     latency=inference_time,
-                    input_data=tx_obj.dict()
+                    input_data=txs_to_compute[j].dict()
                 )
                 
                 results_map[original_index] = result
 
-        # --- PHASE 4: REASSEMBLE ---
-        final_results = [results_map[i] for i in range(len(transactions))]
-        return {"batch_results": final_results}
+        return {"batch_results": [results_map[i] for i in range(len(transactions))]}
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
+        logger.error(f"Prediction error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/explain")
 def explain_transaction(transaction: Transaction):
-    if not model_pipeline or not explainer:
-        raise HTTPException(status_code=503, detail="XAI components not ready")
-
+    if not explainer:
+        raise HTTPException(status_code=503, detail="XAI not ready")
     try:
         df = pd.DataFrame([transaction.dict(exclude={'transaction_id'})])
         scaler = model_pipeline.named_steps['scaler']
         scaled_data = scaler.transform(df)
         shap_values = explainer.shap_values(scaled_data)
         
-        if isinstance(shap_values, list):
-            vals = shap_values[1][0]
-        else:
-            vals = shap_values[0]
-
+        vals = shap_values[1][0] if isinstance(shap_values, list) else shap_values[0]
+        
         importance_map = dict(zip(feature_names, vals))
         sorted_factors = sorted(importance_map.items(), key=lambda item: abs(item[1]), reverse=True)
-        top_5 = {k: v for k, v in sorted_factors[:5]}
-
         return {
             "transaction_id": transaction.transaction_id,
-            "top_contributing_features": top_5,
-            "interpretation": "Positive values increase fraud risk."
+            "top_contributing_features": dict(sorted_factors[:5])
         }
-        
     except Exception as e:
-        print(f"[ERROR] Explanation Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Explanation failed: {str(e)}")
+        logger.error(f"Explanation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
