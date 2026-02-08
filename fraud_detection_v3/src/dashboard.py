@@ -5,7 +5,12 @@ import requests
 import json
 import os
 import time
+import logging
 from sqlalchemy import create_engine
+
+# --- LOGGING SETUP ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+logger = logging.getLogger("Dashboard")
 
 # --- CONFIGURATION ---
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://fraud_user:fraud_pass@localhost:5432/fraud_db")
@@ -21,28 +26,41 @@ def get_db_connection():
     return create_engine(DATABASE_URL)
 
 def load_data():
-    engine = get_db_connection()
-    query = "SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 100"
+    """Fetch the latest 100 transactions from Postgres"""
     try:
+        engine = get_db_connection()
+        query = "SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 100"
         return pd.read_sql(query, engine)
     except Exception as e:
-        st.error(f"Error connecting to database: {e}")
+        logger.error(f"Database error: {e}")
+        st.error("Database connection failed.")
         return pd.DataFrame()
 
 def get_explanation(transaction_data):
+    """Call the API to get SHAP values"""
     try:
         if isinstance(transaction_data, str):
             transaction_data = json.loads(transaction_data)
+            
+        logger.info("Requesting explanation from API...")
         resp = requests.post(f"{API_URL}/explain", json=transaction_data)
+        
         if resp.status_code == 200:
             return resp.json()
         else:
+            logger.error(f"API Explanation Failed: {resp.text}")
             return {"error": resp.text}
     except Exception as e:
+        logger.error(f"Explanation request failed: {e}")
         return {"error": str(e)}
 
 # --- UI LAYOUT ---
 st.title("Real-Time Fraud Detection System")
+
+# SIDEBAR CONTROLS
+st.sidebar.header("Controls")
+auto_refresh = st.sidebar.checkbox("Enable Live Updates", value=True)
+st.sidebar.info("Uncheck 'Enable Live Updates' to pause the feed and investigate specific transactions without the screen refreshing.")
 
 # 1. Metrics Row
 col1, col2, col3, col4 = st.columns(4)
@@ -72,9 +90,13 @@ if not df.empty:
     )
 
     # 3. Investigation & Explainability
+    st.markdown("---")
     st.subheader("Investigator Mode")
     
     tx_ids = df['transaction_id'].tolist()
+    
+    # If we are live updating, picking a transaction is hard because the list shifts.
+    # The pause button solves this.
     selected_tx_id = st.selectbox("Select Transaction ID to Investigate:", tx_ids)
 
     if selected_tx_id:
@@ -87,7 +109,8 @@ if not df.empty:
             st.write(f"**Amount:** ${row['amount']:.2f}")
             st.write(f"**Risk Score:** {row['fraud_probability']:.4f}")
             
-            if st.button("Explain Decision"):
+            # We use a unique key for the button so it doesn't reset weirdly
+            if st.button("Explain Decision", key="explain_btn"):
                 with st.spinner("Asking AI Model..."):
                     input_data_raw = row['input_data']
                     
@@ -99,6 +122,7 @@ if not df.empty:
                             feats = explanation['top_contributing_features']
                             feat_df = pd.DataFrame(list(feats.items()), columns=['Feature', 'Impact'])
                             
+                            # Using Plotly for the chart
                             fig = px.bar(
                                 feat_df, 
                                 x='Impact', 
@@ -127,5 +151,7 @@ else:
     if st.button("Refresh"):
         st.rerun()
 
-time.sleep(2)
-st.rerun()
+# --- AUTO REFRESH LOGIC ---
+if auto_refresh:
+    time.sleep(2)
+    st.rerun()
