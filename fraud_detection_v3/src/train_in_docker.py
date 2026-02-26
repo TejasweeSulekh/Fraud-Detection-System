@@ -6,6 +6,7 @@ import logging
 import time
 import requests
 from sklearn.ensemble import RandomForestClassifier
+# from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import make_classification
@@ -72,6 +73,15 @@ def train():
     # 4. Define Pipeline
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
+        # CHANGE THIS LINE:
+        # ('classifier', XGBClassifier(
+        #     n_estimators=100,
+        #     learning_rate=0.1,
+        #     max_depth=5,
+        #     use_label_encoder=False,
+        #     eval_metric='logloss',
+        #     n_jobs=-1
+        # ))
         ('classifier', RandomForestClassifier(n_estimators=50, n_jobs=-1))
     ])
 
