@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer
+  template:
+    metadata:
+      labels:
+        app: consumer
+    spec:
+      containers:
+      - name: consumer
+        image: fraud-base:latest
+        imagePullPolicy: Never
+        command: ["python", "src/consumer.py"]
+        envFrom:
+        - configMapRef:
+            name: fraud-config
+        env:
+        - name: INFERENCE_API_URL
+          value: "http://inference-service:8000/predict" # Internal K8s DNS to your FastAPI pod

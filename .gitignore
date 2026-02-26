@@ -39,3 +39,6 @@ postgres_data/
 # 4. IDE settings
 .vscode/
 .idea/
+
+# 5. Ignore Rough Plan
+Plan.md

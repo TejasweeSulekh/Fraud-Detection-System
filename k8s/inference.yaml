@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-service
+  template:
+    metadata:
+      labels:
+        app: inference-service
+    spec:
+      containers:
+      - name: inference-api
+        image: fraud-base:latest
+        imagePullPolicy: Never
+        # We don't need a command here because your Dockerfile CMD runs uvicorn natively
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: fraud-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-service # This name matches the INFERENCE_API_URL your consumer uses!
+spec:
+  selector:
+    app: inference-service
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000

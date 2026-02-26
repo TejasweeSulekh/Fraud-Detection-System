@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      containers:
+        - name: mlflow-server
+          image: fraud-mlflow:latest
+          imagePullPolicy: Never
+          command: ["mlflow", "server"]
+          args:
+            - "--backend-store-uri"
+            - "sqlite:///mlflow.db"   # <--- FIX IS HERE (3 slashes, no 'mlruns' folder)
+            - "--artifacts-destination"
+            - "/app/mlruns"           # MLflow is smart enough to create this folder for artifacts
+            - "--serve-artifacts"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "5000"
+          ports:
+          - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-service
+spec:
+  selector:
+    app: mlflow
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000

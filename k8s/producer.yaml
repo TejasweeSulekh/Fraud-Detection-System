@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producer-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer
+  template:
+    metadata:
+      labels:
+        app: producer
+    spec:
+      containers:
+      - name: producer
+        image: fraud-base:latest
+        imagePullPolicy: Never
+        command: ["python", "src/producer.py"]
+        envFrom:
+        - configMapRef:
+            name: fraud-config
