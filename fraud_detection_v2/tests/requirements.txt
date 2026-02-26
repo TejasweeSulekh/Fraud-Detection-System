@@ -1,6 +1,0 @@
-pytest
-pytest-asyncio
-pytest-timeout
-requests
-websockets
-kafka-python

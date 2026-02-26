@@ -1,9 +1,0 @@
-# Environment variables
-.env
-
-# Python
-__pycache__/
-*.pyc
-
-# Docker
-docker-data/
