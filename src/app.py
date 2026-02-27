@@ -79,7 +79,8 @@ def load_artifacts():
             
             # Setup SHAP
             classifier = model_pipeline.named_steps['classifier']
-            explainer = shap.TreeExplainer(classifier)
+            # explainer = shap.TreeExplainer(classifier)
+            explainer = shap.Explainer(classifier)
             feature_names = ['Time'] + [f'V{i}' for i in range(1, 29)] + ['Amount']
             
             logger.info("Model and Explainer loaded successfully!")
@@ -193,11 +194,19 @@ def explain_transaction(transaction: Transaction):
         df = pd.DataFrame([transaction.dict(exclude={'transaction_id'})])
         scaler = model_pipeline.named_steps['scaler']
         scaled_data = scaler.transform(df)
-        shap_values = explainer.shap_values(scaled_data)
         
-        vals = shap_values[1][0] if isinstance(shap_values, list) else shap_values[0]
+        # Using the Explainer logic
+        shap_results = explainer(scaled_data)
         
-        importance_map = dict(zip(feature_names, vals))
+        # Extract the values safely
+        if len(shap_results.values.shape) == 3: # Multi-class
+            vals = shap_results.values[0, :, 1]
+        else: # Binary (XGBoost standard)
+            vals = shap_results.values[0]
+        
+        # THE FIX: Cast the numpy.float32 values to standard Python floats
+        importance_map = {k: float(v) for k, v in zip(feature_names, vals)}
+        
         sorted_factors = sorted(importance_map.items(), key=lambda item: abs(item[1]), reverse=True)
         return {
             "transaction_id": transaction.transaction_id,
