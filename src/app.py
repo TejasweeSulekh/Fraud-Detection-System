@@ -11,6 +11,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
 from src.database import init_db, log_prediction
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import json
 
 # --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
@@ -20,6 +22,7 @@ logger = logging.getLogger("API")
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost") 
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+ENABLE_EMBEDDINGS = os.getenv("ENABLE_EMBEDDINGS", "false").lower() == "true"
 
 MODEL_NAME = "FraudDetectionSOTA"
 
@@ -30,6 +33,9 @@ model_pipeline = None
 explainer = None
 feature_names = None
 redis_client = None
+
+# This uses the GEMINI_API_KEY from your environment
+embedder = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
 # --- DATA SCHEMA ---
 class Transaction(BaseModel):
@@ -129,6 +135,7 @@ def predict_batch(transactions: List[Transaction]):
             # PHASE 3: WRITE-BACK
             for j, (pred, prob) in enumerate(zip(preds, probs)):
                 original_index = indices_to_compute[j]
+                tx_data = txs_to_compute[j]
                 tx_id = txs_to_compute[j].transaction_id
                 
                 result = {
@@ -138,19 +145,39 @@ def predict_batch(transactions: List[Transaction]):
                     "source": "model"
                 }
                 
-                if redis_client:
-                    redis_client.setex(f"pred:{tx_id}", 3600, json.dumps(result))
-                
-                log_prediction(
-                    transaction_id=tx_id,
-                    amount=txs_to_compute[j].Amount,
-                    is_fraud=bool(pred),
-                    prob=float(prob),
-                    latency=inference_time,
-                    input_data=txs_to_compute[j].dict()
-                )
-                
-                results_map[original_index] = result
+                # 1. Caching
+            if redis_client:
+                redis_client.setex(f"pred:{tx_id}", 3600, json.dumps(result))
+            
+            # --- GENERATE VECTOR EMBEDDING ---
+            # Create a textual representation of the transaction's behavior
+            text_to_embed = f"Transaction amount: ${tx_data.Amount}, Time: {tx_data.Time}."
+            
+            # --- GENERATE VECTOR EMBEDDING ---
+            vector_embedding = None # Default to None to save API calls
+            
+            if ENABLE_EMBEDDINGS:
+                text_to_embed = f"Transaction amount: ${tx_data.Amount}, Time: {tx_data.Time}."
+                try:
+                    # Call the GenAI model to translate the text into an array
+                    vector_embedding = embedder.embed_query(text_to_embed)
+                    # Note: We will need to throttle the producer when this is True!
+                except Exception as e:
+                    logger.error(f"Embedding generation failed for {tx_id}: {e}")
+            # --------------------------------------
+
+            # 2. Permanent Storage
+            log_prediction(
+                transaction_id=tx_id,
+                amount=tx_data.Amount,
+                is_fraud=bool(pred),
+                prob=float(prob),
+                latency=inference_time,
+                input_data=tx_data.dict(),
+                embedding=vector_embedding
+            )
+            
+            results_map[original_index] = result
 
         return {"batch_results": [results_map[i] for i in range(len(transactions))]}
         

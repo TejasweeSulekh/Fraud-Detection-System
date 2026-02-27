@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        # THIS IS THE MAGIC LINE: We use the pgvector-enabled image
+        image: pgvector/pgvector:pg15 
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: fraud_user
+        - name: POSTGRES_PASSWORD
+          value: fraud_pass
+        - name: POSTGRES_DB
+          value: fraud_db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # This exactly matches the DNS in your configmap.yaml
+  name: postgres-postgresql 
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432

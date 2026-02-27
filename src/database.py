@@ -1,10 +1,11 @@
 import os
 import json
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+from pgvector.sqlalchemy import Vector
 
 # --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
@@ -26,15 +27,18 @@ class PredictionLog(Base):
     execution_time_ms = Column(Float, nullable=True) 
     timestamp = Column(DateTime, default=datetime.utcnow)
     input_data = Column(String, nullable=True)
+    embedding = Column(Vector(3072), nullable=True)
 
 def init_db():
     try:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully.")
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
 
-def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_data = None):
+def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_data = None, embedding = None):
     session = SessionLocal()
     try:
         record = PredictionLog(
@@ -43,7 +47,8 @@ def log_prediction(transaction_id, amount, is_fraud, prob, latency=0.0, input_da
             is_fraud=is_fraud,
             fraud_probability=prob,
             execution_time_ms=latency,
-            input_data=json.dumps(input_data) if input_data else None
+            input_data=json.dumps(input_data) if input_data else None,
+            embedding=embedding
         )
         session.add(record)
         session.commit()

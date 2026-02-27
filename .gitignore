@@ -42,3 +42,6 @@ postgres_data/
 
 # 5. Ignore Rough Plan
 Plan.md
+
+# 6. Ignoring environment
+.env

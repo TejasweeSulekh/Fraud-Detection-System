@@ -22,6 +22,12 @@ spec:
         envFrom:
         - configMapRef:
             name: fraud-config
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fraud-secrets
+              key: GEMINI_API_KEY
 ---
 apiVersion: v1
 kind: Service

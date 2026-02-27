@@ -4,10 +4,13 @@ import requests
 import zipfile
 import logging
 from urllib.parse import urlencode
+# import gdown
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# gdown.download(id="1q946EqSrkl1_BnbycMoSJe5As3VmuJQn", output="data/dataset.zip", quiet=False)
 
 def download_file_from_google_drive(id, destination):
     URL = "https://docs.google.com/uc/export"

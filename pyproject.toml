@@ -24,6 +24,12 @@ sqlalchemy = "^2.0.25"
 streamlit = "^1.31.0"
 plotly = "^5.18.0"
 watchdog = "^4.0.0"
+gdown = "^5.1.0" # Added to down google drive for loading the data
+langchain = "^1.2.10"
+python-dotenv = "^1.2.1"
+langchain-google-genai = "^4.2.1"
+langgraph = "^1.0.9"
+pgvector = "^0.4.2"
 
 [build-system]
 requires = ["poetry-core"]
