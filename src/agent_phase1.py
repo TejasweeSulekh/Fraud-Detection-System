@@ -7,6 +7,8 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import text # Needed for the custom pgvector SQL query
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import langchain
 langchain.debug = True
 
@@ -151,6 +153,15 @@ def check_db_connection():
     finally:
         session.close()
 
+class InvestigationReport(BaseModel):
+    transaction_id: str = Field(description="The ID of the transaction being investigated.")
+    is_fraud: bool = Field(description="True if the model flagged it as fraud, False otherwise.")
+    risk_score: Optional[float] = Field(description="The numeric risk score/probability from the model, if available.")
+    key_drivers: List[str] = Field(description="List of the top 3-5 feature names that drove the decision (e.g., ['V20', 'V16']).")
+    historical_context: str = Field(description="A brief summary of whether similar historical transactions were found and their status. Note if the tool failed.")
+    executive_summary: str = Field(description="A professional, 2-3 sentence final verdict explaining the flag.")
+    data_complete: bool = Field(description="False if any tools failed (like network errors or quota limits), True if all tools succeeded.")
+
 def run_investigation():
     print("Initializing Agentic AI Investigator...")
     
@@ -187,17 +198,34 @@ def run_investigation():
                 print(f"Tool Output: {latest_message.content[:200]}...") # Print first 200 chars
                 
     print("\n--- AGENT THOUGHT PROCESS END ---")
-    print("\n--- FINAL AGENT REPORT ---")
-    
-    # Fetch the very last message from the final step's state
     final_state = list(step_event.values())[0]
-    final_message = final_state["messages"][-1].content
+    raw_final_message = final_state["messages"][-1].content
+    if isinstance(raw_final_message, list):
+        raw_final_message = raw_final_message[0].get("text", raw_final_message)
+
+    print("\n[SYSTEM LOG] 📝 Structuring the agent's report into JSON...")
     
-    # Handle Gemini's list format gracefully
-    if isinstance(final_message, list):
-        print(final_message[0].get("text", final_message))
-    else:
-        print(final_message)
+    # --- 4. The Formatter Brain (Pydantic Structured Output) ---
+    # We use a fast, cheap model to just format the text into JSON
+    formatter_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+    structured_llm = formatter_llm.with_structured_output(InvestigationReport)
+    
+    formatting_prompt = f"""
+    You are a data extraction assistant. Extract the relevant information from the following 
+    investigation report and format it strictly according to the provided schema.
+    If the report mentions that tools failed or quotas were exhausted, ensure `data_complete` is False.
+    
+    Target Transaction ID: {test_tx_id}
+    Raw Report:
+    {raw_final_message}
+    """
+    
+    # Execute the formatting
+    final_structured_report = structured_llm.invoke(formatting_prompt)
+    
+    print("\n--- FINAL STRUCTURED DASHBOARD PAYLOAD ---")
+    # Print the beautiful JSON
+    print(final_structured_report.model_dump_json(indent=4))
 
 if __name__ == "__main__":
     run_investigation()
