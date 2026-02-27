@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
 from src.database import init_db, log_prediction
+from src.agent_phase1 import run_investigation
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import json
 
@@ -215,3 +216,14 @@ def explain_transaction(transaction: Transaction):
     except Exception as e:
         logger.error(f"Explanation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/investigate/{transaction_id}")
+def investigate_transaction(transaction_id: str):
+    """Triggers the Agentic AI to investigate a specific transaction."""
+    try:
+        # Call the agent script we just imported
+        report_dict = run_investigation(transaction_id)
+        return report_dict
+    except Exception as e:
+        logger.error(f"Agent Investigation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))    

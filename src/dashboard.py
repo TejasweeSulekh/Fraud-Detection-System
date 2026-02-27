@@ -167,6 +167,48 @@ if not df.empty:
         else:
             st.info("Select a transaction or enable 'Explain Stream' to see details.")
 
+    if target_row is not None:
+        st.markdown("---")
+        st.subheader("🤖 Agentic AI Deep Investigation")
+        
+        # Prevent running long LLM calls while the dashboard is fast-refreshing
+        if auto_refresh:
+            st.warning("⏸️ Please disable 'Live Updates' in the sidebar to run a deep AI investigation.")
+        else:
+            current_tx_id = target_row['transaction_id']
+            st.caption(f"Deploy AI Agent to analyze transaction `{current_tx_id}`")
+            
+            # Import our helper from utils
+            from src.utils import fetch_agent_investigation
+            
+            if st.button("Run AI Investigation", type="primary", key=f"agent_btn_{current_tx_id}"):
+                with st.spinner("Agent is analyzing features and searching historical vectors..."):
+                    report = fetch_agent_investigation(current_tx_id)
+                    
+                if report:
+                    # --- Render Agent Output ---
+                    if not report.get("data_complete", True):
+                        st.warning("⚠️ **Partial Report:** The Agent hit a rate limit or database error during investigation. See details below.")
+                        
+                    rc1, rc2 = st.columns(2)
+                    with rc1:
+                        risk = report.get('risk_score')
+                        score_display = f"{risk:.4f}" if risk is not None else "N/A"
+                        st.metric(label="Agent Verified Risk Score", value=score_display)
+                    with rc2:
+                        drivers = report.get('key_drivers', [])
+                        driver_str = ", ".join(drivers) if drivers else "None extracted"
+                        st.metric(label="Primary Suspect Features", value=driver_str)
+
+                    st.markdown("### 📝 Executive Summary")
+                    st.info(report.get("executive_summary", "No summary provided."))
+                    
+                    st.markdown("### 📚 Historical Context")
+                    st.write(report.get("historical_context", "No historical context provided."))
+                    
+                    with st.expander("🛠️ Debug: View Raw Agent JSON"):
+                        st.json(report)
+
 else:
     st.info("Waiting for transactions... (Check if Producer is running)")
 

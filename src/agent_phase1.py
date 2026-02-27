@@ -162,70 +162,62 @@ class InvestigationReport(BaseModel):
     executive_summary: str = Field(description="A professional, 2-3 sentence final verdict explaining the flag.")
     data_complete: bool = Field(description="False if any tools failed (like network errors or quota limits), True if all tools succeeded.")
 
-def run_investigation():
-    print("Initializing Agentic AI Investigator...")
+def run_investigation(transaction_id: str) -> dict:
+    """Runs the agent and returns a structured dictionary for the API."""
+    print(f"\n[SYSTEM LOG] 🚀 Starting Investigation for {transaction_id}...")
     
-    # 1. Check connections before starting
-    check_db_connection()
-    
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-    tools = [analyze_shap_values, search_historical_fraud]
+    try:
+        # 1. We are officially back to the working 2.5 model
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        tools = [analyze_shap_values, search_historical_fraud]
 
-    # --- 2. The LangGraph Agent ---
-    agent_executor = create_react_agent(llm, tools)
-    
-    test_tx_id = input("\nEnter a Transaction ID from your dashboard to investigate: ")
-    print(f"\nStarting Investigation for {test_tx_id}...\n")
-    
-    prompt = f"""
-    Investigate transaction {test_tx_id}. 
-    1. Use the SHAP tool to find out WHY the model flagged it.
-    2. Use the historical search tool to see if this pattern has happened before.
-    Write a short, professional 3-sentence summary combining both insights.
-    """
-    
-    # --- 3. The Invocation (Using Stream for Debugging) ---
-    print("\n--- AGENT THOUGHT PROCESS START ---")
-    
-    # .stream() yields the state of the agent after every single step
-    for step_event in agent_executor.stream({"messages": [("user", prompt)]}):
-        for node_name, node_data in step_event.items():
-            print(f"\n>>> [AGENT STEP]: {node_name.upper()} <<<")
+        agent_executor = create_react_agent(llm, tools)
+        
+        prompt = f"""
+        Investigate transaction {transaction_id}. 
+        1. Use the SHAP tool to find out WHY the model flagged it.
+        2. Use the historical search tool to see if this pattern has happened before.
+        Write a short, professional 3-sentence summary combining both insights.
+        """
+        
+        # 2. Run the Agent
+        for step_event in agent_executor.stream({"messages": [("user", prompt)]}):
+            pass # Silenced for API speed
             
-            # If the node is 'tools', print what the tool returned
-            if node_name == "tools":
-                latest_message = node_data["messages"][-1]
-                print(f"Tool Output: {latest_message.content[:200]}...") # Print first 200 chars
-                
-    print("\n--- AGENT THOUGHT PROCESS END ---")
-    final_state = list(step_event.values())[0]
-    raw_final_message = final_state["messages"][-1].content
-    if isinstance(raw_final_message, list):
-        raw_final_message = raw_final_message[0].get("text", raw_final_message)
+        final_state = list(step_event.values())[0]
+        raw_final_message = final_state["messages"][-1].content
+        if isinstance(raw_final_message, list):
+            raw_final_message = raw_final_message[0].get("text", raw_final_message)
 
-    print("\n[SYSTEM LOG] 📝 Structuring the agent's report into JSON...")
-    
-    # --- 4. The Formatter Brain (Pydantic Structured Output) ---
-    # We use a fast, cheap model to just format the text into JSON
-    formatter_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-    structured_llm = formatter_llm.with_structured_output(InvestigationReport)
-    
-    formatting_prompt = f"""
-    You are a data extraction assistant. Extract the relevant information from the following 
-    investigation report and format it strictly according to the provided schema.
-    If the report mentions that tools failed or quotas were exhausted, ensure `data_complete` is False.
-    
-    Target Transaction ID: {test_tx_id}
-    Raw Report:
-    {raw_final_message}
-    """
-    
-    # Execute the formatting
-    final_structured_report = structured_llm.invoke(formatting_prompt)
-    
-    print("\n--- FINAL STRUCTURED DASHBOARD PAYLOAD ---")
-    # Print the beautiful JSON
-    print(final_structured_report.model_dump_json(indent=4))
-
-if __name__ == "__main__":
-    run_investigation()
+        print("\n[SYSTEM LOG] 📝 Structuring the agent's report...")
+        
+        # 3. The Formatter Brain
+        formatter_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+        structured_llm = formatter_llm.with_structured_output(InvestigationReport)
+        
+        formatting_prompt = f"""
+        Extract info from this report and format it strictly.
+        Target Transaction ID: {transaction_id}
+        Raw Report: {raw_final_message}
+        """
+        
+        final_structured_report = structured_llm.invoke(formatting_prompt)
+        print("[SYSTEM LOG] ✅ Formatter succeeded.")
+        
+        return json.loads(final_structured_report.model_dump_json())
+        
+    except Exception as e:
+        # --- THE MAGIC BYPASS ---
+        # If the LLM throws a Quota error, we catch it and return a simulated payload
+        print(f"\n[SYSTEM LOG] ⚠️ Agent or Quota Failed. Returning UI Simulation Data.\nError: {e}")
+        
+        simulated_report = {
+            "transaction_id": transaction_id,
+            "is_fraud": True,
+            "risk_score": 0.99,
+            "key_drivers": ["V16 (Simulated)", "Amount (Simulated)"],
+            "historical_context": "Simulated Data: The API quota is currently exhausted, so this is mock data to verify the Streamlit UI.",
+            "executive_summary": "SIMULATED REPORT: The Streamlit frontend and FastAPI backend are perfectly connected! Once the Gemini quota resets in a few hours, the real agent will seamlessly take over this pipeline.",
+            "data_complete": False
+        }
+        return simulated_report

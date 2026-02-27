@@ -4,6 +4,7 @@ import requests
 import zipfile
 import logging
 from urllib.parse import urlencode
+import streamlit as st
 # import gdown
 
 # Configure logging
@@ -86,3 +87,27 @@ def download_and_extract_data(file_id, data_dir="data", zip_filename="creditcard
             return None
     
     return None
+
+API_URL = os.getenv("API_URL", "http://inference-service:8000")
+
+def fetch_agent_investigation(transaction_id: str):
+    """Fetches the structured report from the Agentic API."""
+    try:
+        # Agents take time to think. A 60-second timeout prevents Streamlit from giving up too early.
+        response = requests.get(f"{API_URL}/investigate/{transaction_id}", timeout=60)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"API Error {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.ConnectionError:
+        st.error("🚨 Connection Refused: Is the FastAPI server running and port-forwarded?")
+        return None
+    except requests.exceptions.Timeout:
+        st.error("⏳ Timeout: The Agent took too long to respond.")
+        return None
+    except Exception as e:
+        st.error(f"⚠️ Unexpected Error: {str(e)}")
+        return None
