@@ -7,6 +7,8 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import text # Needed for the custom pgvector SQL query
+import langchain
+langchain.debug = True
 
 # Import your existing database setup
 from src.database import SessionLocal, PredictionLog
@@ -59,7 +61,7 @@ def analyze_shap_values(transaction_id: str) -> str:
             return f"API Error: {response.status_code} - {response.text}"
             
     except Exception as e:
-        return f"System Error: {str(e)}"
+        error_msg = f"System Error in analyze_shap_values: {str(e)}"
         print(f"\n[DEBUG - CAUGHT EXCEPTION]: {error_msg}\n")
         return error_msg
     finally:
@@ -129,25 +131,41 @@ def search_historical_fraud(transaction_id: str) -> str:
         return report
 
     except Exception as e:
-        return f"Database/Search Error: {str(e)}"
+        error_msg = f"Database/Search Error in search_historical_fraud: {str(e)}"
+        print(f"\n[DEBUG - CAUGHT EXCEPTION]: {error_msg}\n")
+        return error_msg
+    finally:
+        session.close()
+
+def check_db_connection():
+    """Fails fast if the database is not accessible before wasting LLM calls."""
+    print("\n[SYSTEM LOG] 🔌 Checking database connection...")
+    try:
+        session = SessionLocal()
+        session.execute(text("SELECT 1"))
+        print("[SYSTEM LOG] ✅ Database connection successful.")
+    except Exception as e:
+        print(f"\n[FATAL ERROR] ❌ Database connection failed!")
+        print(f"Did you forget to run 'kubectl port-forward'?\nError details: {e}\n")
+        exit(1) # Stop the script entirely
     finally:
         session.close()
 
 def run_investigation():
     print("Initializing Agentic AI Investigator...")
+    
+    # 1. Check connections before starting
+    check_db_connection()
+    
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
     tools = [analyze_shap_values, search_historical_fraud]
 
     # --- 2. The LangGraph Agent ---
     agent_executor = create_react_agent(llm, tools)
     
-    # We need a valid transaction ID from your database to test this.
-    # Replace this with an actual ID from your Streamlit dashboard!
     test_tx_id = input("\nEnter a Transaction ID from your dashboard to investigate: ")
-
     print(f"\nStarting Investigation for {test_tx_id}...\n")
     
-    # --- 3. The Invocation ---
     prompt = f"""
     Investigate transaction {test_tx_id}. 
     1. Use the SHAP tool to find out WHY the model flagged it.
@@ -155,12 +173,29 @@ def run_investigation():
     Write a short, professional 3-sentence summary combining both insights.
     """
     
-    result = agent_executor.invoke({"messages": [("user", prompt)]})
+    # --- 3. The Invocation (Using Stream for Debugging) ---
+    print("\n--- AGENT THOUGHT PROCESS START ---")
     
+    # .stream() yields the state of the agent after every single step
+    for step_event in agent_executor.stream({"messages": [("user", prompt)]}):
+        for node_name, node_data in step_event.items():
+            print(f"\n>>> [AGENT STEP]: {node_name.upper()} <<<")
+            
+            # If the node is 'tools', print what the tool returned
+            if node_name == "tools":
+                latest_message = node_data["messages"][-1]
+                print(f"Tool Output: {latest_message.content[:200]}...") # Print first 200 chars
+                
+    print("\n--- AGENT THOUGHT PROCESS END ---")
     print("\n--- FINAL AGENT REPORT ---")
-    final_message = result["messages"][-1].content
+    
+    # Fetch the very last message from the final step's state
+    final_state = list(step_event.values())[0]
+    final_message = final_state["messages"][-1].content
+    
+    # Handle Gemini's list format gracefully
     if isinstance(final_message, list):
-        print(final_message[0].get("text", "No text found"))
+        print(final_message[0].get("text", final_message))
     else:
         print(final_message)
 
