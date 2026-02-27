@@ -56,7 +56,7 @@ if __name__ == "__main__":
                 callback=delivery_callback
             )
             
-            time.sleep(0.5) 
+            time.sleep(5) 
 
     except KeyboardInterrupt:
         logger.info("Stopping Producer...")
