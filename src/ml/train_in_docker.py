@@ -5,13 +5,13 @@ import os
 import logging
 import time
 import requests
-from sklearn.ensemble import RandomForestClassifier
-# from xgboost import XGBClassifier
+# from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
-from src.utils import download_and_extract_data
+from src.core.utils import download_and_extract_data
 
 # --- CONFIGURATION ---
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
@@ -73,22 +73,21 @@ def train():
     # 4. Define Pipeline
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
-        # CHANGE THIS LINE:
-        # ('classifier', XGBClassifier(
-        #     n_estimators=100,
-        #     learning_rate=0.1,
-        #     max_depth=5,
-        #     use_label_encoder=False,
-        #     eval_metric='logloss',
-        #     n_jobs=-1
-        # ))
-        ('classifier', RandomForestClassifier(n_estimators=50, n_jobs=-1))
+        ('classifier', XGBClassifier(
+            n_estimators=100,
+            learning_rate=0.1,
+            max_depth=5,
+            eval_metric='logloss',
+            n_jobs=-1
+        ))
     ])
 
     # 5. Train & Register
     with mlflow.start_run():
         logger.info("Training Model...")
         pipeline.fit(X_train, y_train)
+        
+        logger.info(f"✅ Active Classifier: {type(pipeline.named_steps['classifier']).__name__}")
         
         logger.info("Registering Model to MLflow...")
         mlflow.sklearn.log_model(

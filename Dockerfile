@@ -28,4 +28,4 @@ RUN mkdir -p /app/mlruns
 
 EXPOSE 8000
 # Default command (overridden by docker-compose for other services)
-CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
