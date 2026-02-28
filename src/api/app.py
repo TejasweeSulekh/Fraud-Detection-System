@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from src.core.database import init_db, log_prediction
-from src.agent.agent_phase1 import run_investigation
+from src.agent.agent import run_investigation
 
 # --- LOGGING SETUP ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
