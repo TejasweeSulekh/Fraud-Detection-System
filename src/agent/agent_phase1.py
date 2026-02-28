@@ -13,7 +13,7 @@ import langchain
 langchain.debug = True
 
 # Import your existing database setup
-from src.database import SessionLocal, PredictionLog
+from src.core.database import SessionLocal, PredictionLog
 
 load_dotenv()
 

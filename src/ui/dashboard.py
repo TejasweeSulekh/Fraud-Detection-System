@@ -198,7 +198,7 @@ if not df.empty:
             investigate_id = st.session_state.current_tx_id
             st.caption(f"Deploy AI Agent to analyze transaction `{investigate_id}`")
             
-            from src.utils import fetch_agent_investigation
+            from src.core.utils import fetch_agent_investigation
             
             if st.button("Run AI Investigation", type="primary", key=f"agent_btn_{investigate_id}"):
                 with st.spinner("Agent is analyzing features and searching historical vectors..."):

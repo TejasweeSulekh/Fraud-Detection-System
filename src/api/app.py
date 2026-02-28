@@ -10,8 +10,8 @@ import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
-from src.database import init_db, log_prediction
-from src.agent_phase1 import run_investigation
+from src.core.database import init_db, log_prediction
+from src.agent.agent_phase1 import run_investigation
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import json
 

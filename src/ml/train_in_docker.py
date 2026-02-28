@@ -11,7 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
-from src.utils import download_and_extract_data
+from src.core.utils import download_and_extract_data
 
 # --- CONFIGURATION ---
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")
