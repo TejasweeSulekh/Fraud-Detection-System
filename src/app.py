@@ -70,29 +70,28 @@ def load_artifacts():
     mlflow.set_tracking_uri(MLFLOW_URI)
     logger.info(f"Connecting to MLflow at {MLFLOW_URI}...")
 
-    max_retries = 7
+    max_retries = 20
     for attempt in range(max_retries):
         try:
             model_uri = f"models:/{MODEL_NAME}/latest" 
-            logger.info(f"Loading model from {model_uri} (Attempt {attempt+1})...")
+            logger.info(f"Loading model from {model_uri} (Attempt {attempt+1}/{max_retries})...")
             
             model_pipeline = mlflow.sklearn.load_model(model_uri)
             
             # Setup SHAP
             classifier = model_pipeline.named_steps['classifier']
-            # explainer = shap.TreeExplainer(classifier)
             explainer = shap.Explainer(classifier)
             feature_names = ['Time'] + [f'V{i}' for i in range(1, 29)] + ['Amount']
             
-            logger.info("Model and Explainer loaded successfully!")
+            logger.info("✅ Model and Explainer loaded successfully!")
             return
             
         except Exception as e:
-            logger.warning(f"Load failed: {e}")
+            logger.warning(f"Load failed: Model might still be training... ({e})")
             if attempt < max_retries - 1:
-                time.sleep(5)
+                time.sleep(15) # Wait 15 seconds before trying again (5 minutes total wait time)
             else:
-                logger.error("CRITICAL: Could not load model.")
+                logger.error("CRITICAL: Could not load model after 5 minutes.")
 
 # --- ENDPOINTS ---
 @app.get("/")
@@ -158,14 +157,30 @@ def predict_batch(transactions: List[Transaction]):
             # --- GENERATE VECTOR EMBEDDING ---
             vector_embedding = None # Default to None to save API calls
             
+            vector_embedding = None # Default to None to save API calls
+            
             if ENABLE_EMBEDDINGS:
                 text_to_embed = f"Transaction amount: ${tx_data.Amount}, Time: {tx_data.Time}."
-                try:
-                    # Call the GenAI model to translate the text into an array
-                    vector_embedding = embedder.embed_query(text_to_embed)
-                    # Note: We will need to throttle the producer when this is True!
-                except Exception as e:
-                    logger.error(f"Embedding generation failed for {tx_id}: {e}")
+                
+                # Check how many embeddings we have generated so far
+                current_count = 0
+                if redis_client:
+                    # Redis INCR is atomic, so it safely counts up even if multiple workers are running
+                    current_count = redis_client.incr("global_embedding_count")
+                
+                if current_count <= 10:
+                    try:
+                        # Call the GenAI model to translate the text into an array
+                        vector_embedding = embedder.embed_query(text_to_embed)
+                        logger.info(f"Generated embedding {current_count}/50 for {tx_id}")
+                    except Exception as e:
+                        logger.error(f"Embedding generation failed for {tx_id}: {e}")
+                        # Decrement so we don't waste the count on a failure
+                        if redis_client:
+                            redis_client.decr("global_embedding_count")
+                else:
+                    # Throttle engaged: Do not generate embeddings anymore
+                    pass
             # --------------------------------------
 
             # 2. Permanent Storage
