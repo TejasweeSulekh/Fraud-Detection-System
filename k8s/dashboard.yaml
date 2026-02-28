@@ -16,7 +16,7 @@ spec:
       - name: dashboard
         image: fraud-base:latest
         imagePullPolicy: Never
-        command: ["streamlit", "run", "src/dashboard.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+        command: ["streamlit", "run", "src/ui/dashboard.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
         ports:
         - containerPort: 8501
         envFrom:

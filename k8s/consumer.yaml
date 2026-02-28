@@ -16,7 +16,7 @@ spec:
       - name: consumer
         image: fraud-base:latest
         imagePullPolicy: Never
-        command: ["python", "src/consumer.py"]
+        command: ["python", "src/data_pipeline/consumer.py"]
         envFrom:
         - configMapRef:
             name: fraud-config

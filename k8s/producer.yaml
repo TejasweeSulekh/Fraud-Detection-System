@@ -16,7 +16,7 @@ spec:
       - name: producer
         image: fraud-base:latest
         imagePullPolicy: Never
-        command: ["python", "src/producer.py"]
+        command: ["python", "src/data_pipeline/producer.py"]
         envFrom:
         - configMapRef:
             name: fraud-config

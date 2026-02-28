@@ -9,7 +9,7 @@ spec:
       - name: init-model
         image: fraud-base:latest
         imagePullPolicy: Never # Use your local Docker build
-        command: ["python", "src/train_in_docker.py"]
+        command: ["python", "src/ml/train_in_docker.py"]
         # This automatically loads all variables from your ConfigMap!
         envFrom:
         - configMapRef:
