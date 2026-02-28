@@ -1,4 +1,4 @@
-# 🛡️ Agentic AI Fraud Detection System (Kubernetes Architecture)
+# 🛡️ Agentic AI Fraud Detection System (V4.0)
 
 ![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes-blue)
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
