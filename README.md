@@ -1,95 +1,194 @@
-# Fraud-Detection-System
+# 🛡️ Agentic AI Fraud Detection System (Kubernetes Architecture)
 
-This project is a full-stack application designed to detect potentially fraudulent transactions using a rule-based engine. It features a Python backend API built with FastAPI, a PostgreSQL database for data persistence, and a simple vanilla JavaScript frontend for interaction. The entire application is containerized using Docker for easy setup and deployment.
-
-# 🛡️ Real-Time Fraud Detection System (v3.1)
-
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Docker](https://img.shields.io/badge/Docker-Compose-orange)
+![Kubernetes](https://img.shields.io/badge/Orchestration-Kubernetes-blue)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![GenAI](https://img.shields.io/badge/Agentic_AI-LangGraph%20%7C%20Gemini-green)
 ![MLflow](https://img.shields.io/badge/MLOps-MLflow-blueviolet)
 ![Kafka](https://img.shields.io/badge/Streaming-Kafka-black)
 
-A complete, containerized MLOps pipeline for detecting fraudulent credit card transactions in real-time. This system simulates a production environment with event streaming, distributed caching, model versioning, and an explainable AI (XAI) dashboard.
+An enterprise-grade, event-driven microservices pipeline for detecting and investigating fraudulent credit card transactions. Moving beyond simple classification, this system leverages an autonomous **Agentic AI** workflow connected to a **Vector Database (pgvector)** RAG pipeline to generate explainable, human-readable audit reports in real-time.
 
 ## 🚀 Key Features
 
-* **Real-Time Inference:** sub-50ms latency using **FastAPI** and **Redis** caching.
-* **Event Streaming:** Decoupled architecture using **Apache Kafka** for high-throughput transaction processing.
-* **Automated MLOps:** Self-healing training pipeline that automatically retrains and versions models using **MLflow**.
-* **Explainable AI (XAI):** Integrated **SHAP** (SHapley Additive exPlanations) to provide "Why" behind every fraud alert.
-* **Live Monitoring:** Interactive **Streamlit** dashboard for visualizing fraud trends and investigating alerts.
+* **Kubernetes Orchestration:** Fully decoupled microservices architecture designed for fault tolerance and horizontal scaling.
+* **Agentic AI Investigation:** An on-demand LangGraph agent that queries historical vector embeddings and SHAP values to explain *why* a transaction was flagged.
+* **Real-Time Inference Pipeline:** Sub-100ms latency achieved by decoupling ingestion (Apache Kafka) from inference (FastAPI) with a Redis read-through caching layer.
+* **Vector RAG Storage:** JIT (Just-In-Time) embedding generation stored in PostgreSQL (`pgvector`) to find mathematically similar historical fraud patterns.
+* **Automated MLOps:** Containerized training jobs that automatically version and register XGBoost models via MLflow.
+* **Live Investigation Dashboard:** An interactive Streamlit UI for monitoring traffic, visualizing SHAP feature importance, and deploying the AI agent.
 
-## 🏗️ Architecture
+## 🏗️ Architecture Flow
 
-The system is composed of 6 microservices orchestrated via Docker Compose:
-
-1.  **Producer:** Simulates a stream of credit card transactions (Legit & Fraud).
-2.  **Kafka:** Buffers transactions for asynchronous processing.
-3.  **Consumer:** Reads from Kafka, sends data to the Inference API.
-4.  **Inference API:** The brain. Loads the model from MLflow, checks Redis cache, predicts fraud, and logs to Postgres.
-5.  **Dashboard:** A UI for analysts to monitor traffic and audit suspicious transactions.
-6.  **MLflow & Postgres:** Backend for model registry and persistent data storage.
+1. **Ingestion:** A Producer simulates transactions and pushes them to a **Kafka** topic.
+2. **Streaming:** A Consumer pulls from Kafka and hits the **FastAPI** Inference endpoint.
+3. **Prediction:** FastAPI checks **Redis** for cached predictions, loads the active model from **MLflow**, and calculates risk.
+4. **Storage:** Background tasks generate LLM embeddings and save the raw data, predictions, and vectors to **PostgreSQL**.
+5. **Investigation:** Analysts use the **Streamlit** dashboard to trigger the GenAI Agent, which uses tools to hit the `/explain` endpoint and search the Vector DB for historical context.
 
 ## 🛠️ Tech Stack
 
-* **Language:** Python 3.12
-* **ML Frameworks:** Scikit-Learn, SHAP, MLflow
-* **Streaming:** Confluent Kafka, Zookeeper
-* **Web/API:** FastAPI, Streamlit
-* **Database/Cache:** PostgreSQL, Redis
-* **Infrastructure:** Docker, Docker Compose
+* **AI & Machine Learning:** Scikit-Learn, XGBoost, SHAP, LangChain, LangGraph, Gemini API.
+* **Streaming & Compute:** Confluent Kafka, Zookeeper, FastAPI.
+* **Database & Cache:** PostgreSQL (`pgvector`), Redis.
+* **MLOps & DevOps:** MLflow, Docker, Kubernetes (Minikube/Kind).
 
-## ⚡ Quick Start
+---
 
-You can spin up the entire system with a single command. No local Python environment is required.
+## ⚡ Quick Start (Local Kubernetes Cluster)
 
 ### Prerequisites
-* Docker Desktop installed and running.
+* [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed.
+* [Minikube](https://minikube.sigs.k8s.io/docs/start/) or Kind installed.
+* `kubectl` CLI installed.
+* A Google Gemini API Key.
 
-### Installation
+### 1. Start your Local Cluster
+Spin up your local Kubernetes environment:
+```bash
+minikube start --cpus 4 --memory 8192
+```
 
-1.  **Clone the repository**
-    ```bash
-    git clone Fraud-Detection-System
-    cd ./Fraud-Detection-System/fraud_detection_v3
-    ```
+### 2. Configure Secrets
+The AI Agent requires an API key to run investigations. Store it securely in the cluster:
 
-2.  **Launch the System**
-    ```bash
-    docker-compose up --build
-    ```
-    *Note: The first run may take a few minutes as it downloads the dataset and trains the initial model.*
+```bash
+kubectl create secret generic fraud-secrets \
+  --from-literal=GEMINI_API_KEY="your_actual_api_key_here"
+```
 
-3. **What Happens**
+### 3. Deploy the Microservices
+Apply the Kubernetes manifests (assuming they are in a `k8s/` folder):
 
-    * **mlflow-server** starts.
+```bash
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redis.yaml
+kubectl apply -f k8s/kafka.yaml
+kubectl apply -f k8s/mlflow.yaml
+```
 
-    * **init-model** will stay in "Created" state and wait until mlflow-server is healthy (responding to curl).
+Wait for the databases and MLflow to be running before deploying the compute layers.
 
-    * Once MLflow is green, init-model runs train_in_docker.py.
+```bash
+kubectl apply -f k8s/init-model.yaml
+# Wait for the model training job to complete, then deploy the rest:
+kubectl apply -f k8s/inference.yaml
+kubectl apply -f k8s/producer.yaml
+kubectl apply -f k8s/consumer.yaml
+kubectl apply -f k8s/dashboard.yaml
+```
+### 4. Access the Dashboards (Port Forwarding)
+Because Kubernetes isolates networks, you need to forward the ports to your local machine.
 
-    * **train_in_docker.py** will now successfully download the data (using the fixed utils.py) and log the model.
+Open a new terminal and forward the **Streamlit Dashboard**:
+```bash
+kubectl port-forward svc/dashboard-service 8501:8501
+```
 
-    * Once init-model finishes (exits with code 0), inference-service will start.
+Open another terminal and forward the **MLflow Registry**:
+```bash
+kubectl port-forward svc/mlflow-service 5000:5000
+```
 
-    * The rest of the system spins up.
+- **Live Dashboard**: http://localhost:8501
+- **MLflow UI**: http://localhost:5000
+---
 
-4.  **Access the Services**
-    * **Dashboard:** [http://localhost:8501](http://localhost:8501) 
-    * **MLflow UI:** [http://localhost:5000](http://localhost:5000)
-    * **API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
-
-## 📂 Project Structure
+📂 Project Structure
 
 ```text
-├── data/               # Local data storage (mounted volume)
-├── mlruns/             # MLflow artifact storage
-├── src/                # Source code for all microservices
-│   ├── app.py          # FastAPI Inference Service
-│   ├── consumer.py     # Kafka Consumer logic
-│   ├── dashboard.py    # Streamlit Dashboard
-│   ├── train_in_docker.py # Automated Training Script
-│   └── ...
-├── docker-compose.yml  # Orchestration config
-└── Dockerfile          # Unified container definition
+├── Dockerfile
+├── Dockerfile.mlflow
+├── LICENSE
+├── README.md
+├── check_health.py
+├── docker-compose.yml
+├── k8s
+│   ├── configmap.yaml
+│   ├── consumer.yaml
+│   ├── dashboard.yaml
+│   ├── inference.yaml
+│   ├── init-model.yaml
+│   ├── mlflow.yaml
+│   ├── postgres.yaml
+│   └── producer.yaml
+├── mlflow_store
+│   └── mlflow.db
+├── poetry.lock
+├── pyproject.toml
+├── src
+│   ├── __init__.py
+│   ├── agent
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   └── tools.py
+│   ├── api
+│   │   ├── __init__.py
+│   │   └── app.py
+│   ├── core
+│   │   ├── database.py
+│   │   └── utils.py
+│   ├── data_pipeline
+│   │   ├── __init__.py
+│   │   ├── consumer.py
+│   │   └── producer.py
+│   ├── ml
+│   │   ├── __init__.py
+│   │   └── train_in_docker.py
+│   └── ui
+│       └── dashboard.py
+└── tests
+    ├── test_agent.py
+    ├── test_agent_loop.py
+    ├── test_api.py
+    ├── test_llm.py
+    └── test_tools.py
+```
+
+```mermaid
+flowchart TD
+    %% Define Colors & Styles
+    classDef storage fill:#f9f2f4,stroke:#333,stroke-width:2px;
+    classDef compute fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef agent fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
+
+    %% Define Nodes
+    subgraph streaming [Streaming Layer]
+        Prod[Producer Pod]:::compute
+        Kafka[(Apache Kafka)]:::storage
+        Cons[Consumer Pod]:::compute
+    end
+
+    subgraph inference [Inference & MLOps]
+        API["FastAPI Service<br>app.py"]:::compute
+        Cache[(Redis Cache)]:::storage
+        ModelReg[("MLflow Registry")]:::storage
+    end
+
+    subgraph storage_layer [Storage Layer]
+        DB[("PostgreSQL + pgvector<br>fraud_db")]:::storage
+    end
+
+    subgraph ui_ai [User Interface & AI]
+        UI["Streamlit Dashboard<br>dashboard.py"]:::compute
+        Agent{"LangGraph AI Agent<br>agent.py"}:::agent
+    end
+
+    %% Data Flow
+    Prod -->|Produces Transactions| Kafka
+    Kafka -->|Consumes Stream| Cons
+    Cons -->|POST /predict| API
+
+    API <-->|Check/Set| Cache
+    ModelReg -.->|Loads Active Model| API
+    API -->|Async Log & Embed| DB
+
+    UI -->|Polls Latest 100| DB
+    UI -->|POST /explain| API
+    UI -->|GET /investigate| API
+    
+    API -->|Triggers| Agent
+    Agent -->|Tool: Search History| DB
+    Agent -.->|Tool: SHAP Values| API
+```
 
